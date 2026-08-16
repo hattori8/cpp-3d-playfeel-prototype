@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>astro_proto ─ アストロボット風 基本操作プロト (WebAssembly)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html { overscroll-behavior: none; }
+  body {
+    margin: 0; padding: 18px 16px 40px;
+    background: #14171d;
+    color: #e7ebf2;
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 4px; letter-spacing: .02em; }
+  .sub { font-size: 13px; color: #93a0b4; margin: 0 0 14px; }
+  #frame { position: relative; width: 1280px; max-width: 100%; }
+  canvas {
+    display: block; width: 100%; height: auto; aspect-ratio: 16 / 9;
+    background: #0c0f14; border: 1px solid #2c333f; border-radius: 8px;
+    outline: none; touch-action: none;
+  }
+  canvas:focus { border-color: #4a90d9; }
+  #veil {
+    position: absolute; inset: 0; border-radius: 8px;
+    background: rgba(10,13,18,.86);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; cursor: pointer; text-align: center; padding: 20px;
+  }
+  #veil h2 { font-size: 20px; margin: 0; }
+  #veil p { font-size: 13px; color: #9fb0c6; margin: 0; max-width: 460px; line-height: 1.6; }
+  #bar { height: 4px; width: 240px; background: #262d38; border-radius: 2px; overflow: hidden; }
+  #bar > i { display: block; height: 100%; width: 30%; background: #4a90d9; transition: width .2s; }
+  .go { color: #ffd76e; font-size: 14px; }
+  .panels { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 16px; width: 1280px; max-width: 100%; }
+  .panel { flex: 1 1 300px; background: #1b1f27; border: 1px solid #2a313d; border-radius: 8px; padding: 12px 14px; }
+  .panel h3 { font-size: 13px; margin: 0 0 8px; color: #ffd76e; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  td { padding: 3px 0; vertical-align: top; }
+  td:first-child { color: #8fa3bd; white-space: nowrap; padding-right: 12px; }
+  kbd {
+    background: #262d38; border: 1px solid #3a434f; border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 5px; font-size: 11.5px; font-family: inherit;
+  }
+  .note { font-size: 12px; color: #7d8b9f; margin-top: 14px; max-width: 900px; text-align: center; line-height: 1.7; }
+</style>
+</head>
+<body>
+
+<h1>astro_proto ─ アストロボット風 基本操作プロトタイプ</h1>
+<p class="sub">C++17 + raylib を WebAssembly にビルドしたもの。ネイティブ版と同じソースです。</p>
+
+<div id="frame">
+  <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="veil">
+    <h2>読み込み中…</h2>
+    <div id="bar"><i></i></div>
+    <p id="veiltext">WebAssembly を展開しています。</p>
+  </div>
+</div>
+
+<div class="panels">
+  <div class="panel">
+    <h3>操作（キーボード）</h3>
+    <table>
+      <tr><td>移動</td><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td></tr>
+      <tr><td>カメラ</td><td><kbd>Q</kbd> <kbd>E</kbd> / <kbd>←</kbd> <kbd>→</kbd>（上下 <kbd>↑</kbd> <kbd>↓</kbd>）</td></tr>
+      <tr><td>ジャンプ</td><td><kbd>Space</kbd></td></tr>
+      <tr><td>ホバー</td><td><kbd>Space</kbd> を押し続ける</td></tr>
+      <tr><td>パンチ</td><td><kbd>J</kbd>（地上）</td></tr>
+      <tr><td>レーザー</td><td>空中で <kbd>J</kbd> を押し続ける</td></tr>
+      <tr><td>能力（ダッシュ）</td><td><kbd>K</kbd> を押し続ける（黄色いアイテムを拾うと使える）</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>操作（ゲームパッド）</h3>
+    <table>
+      <tr><td>移動 / カメラ</td><td>左スティック / 右スティック</td></tr>
+      <tr><td>ジャンプ</td><td>×（長押しでホバー）</td></tr>
+      <tr><td>パンチ / レーザー</td><td>□</td></tr>
+      <tr><td>能力（ダッシュ）</td><td>R2 を押し続ける</td></tr>
+      <tr><td colspan="2" style="color:#7d8b9f;padding-top:6px">
+        パッドはブラウザに認識させるため、接続後に一度ボタンを押してください。<br>
+        開始後は Space・矢印・F5 などのブラウザ既定動作を止めています。</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>デバッグ / チューニング</h3>
+    <table>
+      <tr><td><kbd>F1</kbd></td><td>状態表示</td></tr>
+      <tr><td><kbd>F2</kbd></td><td>当たり判定の表示</td></tr>
+      <tr><td><kbd>F3</kbd></td><td>パラメータエディタ</td></tr>
+      <tr><td><kbd>PgUp</kbd> <kbd>PgDn</kbd></td><td>項目を選ぶ</td></tr>
+      <tr><td><kbd>-</kbd> <kbd>=</kbd></td><td>値を増減（押しっぱなしで連続）</td></tr>
+      <tr><td><kbd>F6</kbd></td><td>現在値をブラウザのコンソールに出力</td></tr>
+      <tr><td><kbd>R</kbd> / <kbd>F9</kbd></td><td>復帰 / レベル作り直し</td></tr>
+    </table>
+  </div>
+</div>
+
+<p class="note">
+  <kbd>F3</kbd> → <kbd>PgDn</kbd> で項目を選び <kbd>-</kbd> <kbd>=</kbd> で数値をいじると、手触りがその場で変わります。
+  気に入った値は <kbd>F6</kbd> でコンソール（F12 → Console）に出るので、そのまま params.txt に貼ってください。
+</p>
+
+<script>
+  var veil = document.getElementById('veil');
+  var veiltext = document.getElementById('veiltext');
+  var bar = document.querySelector('#bar > i');
+  var canvas = document.getElementById('canvas');
+  var ready = false;
+  var started = false;   // クリックして操作を始めたか
+
+  function showReady() {
+    if (ready) return;
+    ready = true;
+    veil.querySelector('h2').textContent = 'クリックで開始';
+    veiltext.innerHTML = 'キー入力を受け取るために、一度キャンバスをクリックしてください。<br>WASD で移動、Space でジャンプ（長押しでホバー）、J でパンチ、K でダッシュ。';
+    document.getElementById('bar').style.display = 'none';
+    veil.insertAdjacentHTML('beforeend', '<div class="go">▶ CLICK TO PLAY</div>');
+  }
+  veil.addEventListener('click', function () {
+    if (!ready) return;
+    veil.style.display = 'none';
+    started = true;
+    canvas.focus({ preventScroll: true });
+    canvas.scrollIntoView({ block: 'center' });
+  });
+  canvas.addEventListener('mousedown', function () { canvas.focus({ preventScroll: true }); });
+
+  // ── キーの既定動作を止める
+  //
+  // Space はページスクロール、矢印もスクロール、F5 はリロード、Tab はフォーカス移動、
+  // といったブラウザの既定動作がゲームの操作とぶつかる。開始後だけ preventDefault する。
+  // capture フェーズで潰すので、Emscripten 側のリスナーにはそのまま届く
+  // （stopPropagation はしない）。
+  var BLOCKED_KEYS = [
+    ' ', 'Spacebar', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+    'PageUp', 'PageDown', 'Home', 'End', 'Tab', '/', "'"
+  ];
+  // F11（全画面）と F12（開発者ツール）はブラウザに残す
+  var BLOCKED_FKEYS = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10'];
+
+  function shouldBlock(e) {
+    if (!started) return false;                          // 開始前は普通のページとして触れる
+    if (e.ctrlKey || e.metaKey || e.altKey) return false; // ブラウザのショートカットは残す
+    if (BLOCKED_KEYS.indexOf(e.key) >= 0) return true;
+    if (BLOCKED_FKEYS.indexOf(e.key) >= 0) return true;
+    return false;
+  }
+  function guard(e) { if (shouldBlock(e)) e.preventDefault(); }
+  window.addEventListener('keydown', guard, { capture: true, passive: false });
+  window.addEventListener('keyup',   guard, { capture: true, passive: false });
+  // キャンバス上のホイールでページが動かないように
+  canvas.addEventListener('wheel', function (e) { if (started) e.preventDefault(); },
+                          { passive: false });
+
+  var Module = {
+    preRun: [],
+    postRun: [function () { setTimeout(showReady, 250); }],
+    print: function (text) { console.log(text); },
+    printErr: function (text) { console.warn(text); },
+    canvas: canvas,
+    setStatus: function (text) {
+      if (!text) { showReady(); return; }
+      var m = /([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/.exec(text);
+      if (m) {
+        var pct = (parseFloat(m[2]) / parseFloat(m[4])) * 100;
+        bar.style.width = pct.toFixed(0) + '%';
+        veiltext.textContent = m[1].trim();
+      } else {
+        veiltext.textContent = text;
+      }
+    },
+    totalDependencies: 0,
+    monitorRunDependencies: function () {}
+  };
+  window.onerror = function (msg) {
+    veil.style.display = 'flex';
+    veil.querySelector('h2').textContent = '読み込みに失敗しました';
+    veiltext.textContent = String(msg);
+  };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>
