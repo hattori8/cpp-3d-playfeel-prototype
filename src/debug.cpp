@@ -158,7 +158,7 @@ void DrawDebugPanel(Game& g) {
         DrawText(TextFormat("rides %d", g.stats.slideRides), x, y, 18, RAYWHITE);
     }
     y += 22;
-    DrawText("F1 info  F2 collision  F3 params  R respawn  F9 rebuild", x, y, 15,
+    DrawText("F1 info  F2 collision  F3 params  F4 EDITOR  R respawn  F9 rebuild", x, y, 15,
              Color{255, 220, 140, 255});
 }
 

@@ -24,6 +24,13 @@
     outline: none; touch-action: none;
   }
   canvas:focus { border-color: #4a90d9; }
+  #frame.drag canvas { border-color: #ffd76e; }
+  #drophint {
+    position: absolute; inset: 0; border-radius: 8px; display: none;
+    align-items: center; justify-content: center; pointer-events: none;
+    background: rgba(10,13,18,.72); color: #ffd76e; font-size: 20px;
+  }
+  #frame.drag #drophint { display: flex; }
   #veil {
     position: absolute; inset: 0; border-radius: 8px;
     background: rgba(10,13,18,.86);
@@ -45,6 +52,13 @@
     background: #262d38; border: 1px solid #3a434f; border-bottom-width: 2px;
     border-radius: 4px; padding: 0 5px; font-size: 11.5px; font-family: inherit;
   }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  button.act {
+    background: #262d38; color: #e7ebf2; border: 1px solid #3a434f; border-bottom-width: 2px;
+    border-radius: 5px; padding: 6px 11px; font-size: 12.5px; font-family: inherit; cursor: pointer;
+  }
+  button.act:hover { background: #303948; border-color: #4a90d9; }
+  button.act:disabled { opacity: .45; cursor: default; }
   .note { font-size: 12px; color: #7d8b9f; margin-top: 14px; max-width: 900px; text-align: center; line-height: 1.7; }
 </style>
 </head>
@@ -55,6 +69,7 @@
 
 <div id="frame">
   <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="drophint">level.txt をドロップして読み込む</div>
   <div id="veil">
     <h2>読み込み中…</h2>
     <div id="bar"><i></i></div>
@@ -99,6 +114,28 @@
       <tr><td><kbd>R</kbd> / <kbd>F9</kbd></td><td>復帰 / レベル作り直し</td></tr>
     </table>
   </div>
+  <div class="panel">
+    <h3>レベルエディタ（<kbd>F4</kbd>）</h3>
+    <table>
+      <tr><td>選択 / 種類</td><td>左クリック、<kbd>[</kbd> <kbd>]</kbd> で種類、<kbd>Tab</kbd> で次</td></tr>
+      <tr><td>移動</td><td><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> <kbd>PgUp</kbd> <kbd>PgDn</kbd>（<kbd>Shift</kbd>＝大きさ）</td></tr>
+      <tr><td>追加 / 複製 / 削除</td><td><kbd>N</kbd> / <kbd>C</kbd> / <kbd>X</kbd></td></tr>
+      <tr><td>部分切替</td><td><kbd>T</kbd>（移動床のA・B、スライダーの制御点）</td></tr>
+      <tr><td>数値</td><td><kbd>,</kbd> <kbd>.</kbd> で項目、<kbd>-</kbd> <kbd>=</kbd> で増減</td></tr>
+      <tr><td>カメラ</td><td>右ドラッグ回転 / ホイール / <kbd>WASDQE</kbd></td></tr>
+    </table>
+    <div class="btnrow">
+      <button class="act" id="btnEdit"  disabled>編集モード切替 (F4)</button>
+      <button class="act" id="btnSave"  disabled>level.txt を保存</button>
+      <button class="act" id="btnLoad"  disabled>level.txt を読み込む</button>
+      <input type="file" id="fileLevel" accept=".txt,text/plain" style="display:none">
+    </div>
+    <p style="font-size:12px;color:#7d8b9f;margin:10px 0 0;line-height:1.7">
+      キャンバスに level.txt をドロップしても読み込めます。ブラウザ版の保存は
+      <b>ダウンロード</b>です。降りてきた level.txt をリポジトリ直下に置いてビルドし直すと、
+      公開版の既定レベルになります。
+    </p>
+  </div>
 </div>
 
 <p class="note">
@@ -111,6 +148,7 @@
   var veiltext = document.getElementById('veiltext');
   var bar = document.querySelector('#bar > i');
   var canvas = document.getElementById('canvas');
+  var frame = document.getElementById('frame');
   var ready = false;
   var started = false;   // クリックして操作を始めたか
 
@@ -118,9 +156,10 @@
     if (ready) return;
     ready = true;
     veil.querySelector('h2').textContent = 'クリックで開始';
-    veiltext.innerHTML = 'キー入力を受け取るために、一度キャンバスをクリックしてください。<br>WASD で移動、Space でジャンプ（長押しでホバー）、J でパンチ、K でダッシュ。';
+    veiltext.innerHTML = 'キー入力を受け取るために、一度キャンバスをクリックしてください。<br>WASD で移動、Space でジャンプ（長押しでホバー）、J でパンチ、K でダッシュ。<br>F4 でレベルエディタ。';
     document.getElementById('bar').style.display = 'none';
     veil.insertAdjacentHTML('beforeend', '<div class="go">▶ CLICK TO PLAY</div>');
+    enableLevelButtons();
   }
   veil.addEventListener('click', function () {
     if (!ready) return;
@@ -157,6 +196,74 @@
   // キャンバス上のホイールでページが動かないように
   canvas.addEventListener('wheel', function (e) { if (started) e.preventDefault(); },
                           { passive: false });
+
+  // ── レベルの受け渡し（ブラウザにはディスクが無いので、保存＝ダウンロード）
+  //
+  // C 側で EMSCRIPTEN_KEEPALIVE を付けた3つだけを呼ぶ。ゲームの状態には触らない。
+  var btnEdit = document.getElementById('btnEdit');
+  var btnSave = document.getElementById('btnSave');
+  var btnLoad = document.getElementById('btnLoad');
+  var fileLevel = document.getElementById('fileLevel');
+
+  function callC(name, argTypes, args) {
+    if (typeof Module === 'undefined' || !Module.ccall) return false;
+    try {
+      Module.ccall(name, null, argTypes, args);
+      return true;
+    } catch (err) {
+      console.error('[level] ' + name + ' failed', err);
+      return false;
+    }
+  }
+  function enableLevelButtons() {
+    btnEdit.disabled = false;
+    btnSave.disabled = false;
+    btnLoad.disabled = false;
+  }
+  function loadLevelText(text) {
+    if (callC('AstroLoadLevelText', ['string'], [text])) {
+      canvas.focus({ preventScroll: true });
+    }
+  }
+
+  btnEdit.addEventListener('click', function () {
+    callC('AstroToggleEditor', [], []);
+    canvas.focus({ preventScroll: true });
+  });
+  btnSave.addEventListener('click', function () {
+    callC('AstroSaveLevelDownload', [], []);
+    canvas.focus({ preventScroll: true });
+  });
+  btnLoad.addEventListener('click', function () { fileLevel.click(); });
+  fileLevel.addEventListener('change', function () {
+    var f = fileLevel.files && fileLevel.files[0];
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () { loadLevelText(String(r.result)); };
+    r.readAsText(f);
+    fileLevel.value = '';
+  });
+
+  // キャンバスへのドラッグ&ドロップ
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    frame.addEventListener(ev, function (e) {
+      e.preventDefault();
+      frame.classList.add('drag');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    frame.addEventListener(ev, function (e) {
+      e.preventDefault();
+      frame.classList.remove('drag');
+    });
+  });
+  frame.addEventListener('drop', function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () { loadLevelText(String(r.result)); };
+    r.readAsText(f);
+  });
 
   var Module = {
     preRun: [],

@@ -1,0 +1,6 @@
+# ビルド生成物（コミットしない）
+build/
+build-web/
+build-win/
+out/
+dist/

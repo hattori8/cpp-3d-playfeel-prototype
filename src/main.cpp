@@ -32,6 +32,9 @@ int main(void) {
     Game& g = gGame;
     LoadParams(g.p, &g.paramsPath);
     BuildLevel(g);
+    // level.txt があればそちらで上書きする。無ければコードのレベルのまま。
+    // BuildLevel（コード側）を常に土台にしておくと、level.txt を消せば必ず戻れる。
+    LoadLevel(g, nullptr);
     UpdateRigInput(g, 1.0f / 60.0f);
     UpdateRigFollow(g, 1.0f);      // 初期位置へ一気に寄せる
 

@@ -101,19 +101,24 @@ static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float 
     return r;
 }
 
-// 制御点からウォータースライダーを作る。当たり判定は作らない（中心線に沿わせる方式）。
-static int AddSlide(Level& l, const std::vector<Vector3>& ctrl, float radius, int sub = 8) {
-    WaterSlide s;
-    s.radius = radius;
-    if (ctrl.size() < 2) return -1;
+// 制御点(ctrl)から中心線(pts/cum/length)を作り直す。
+// エディタで制御点を1つ動かすたびにこれを呼ぶ。派生データはいつでも捨てて作り直せる、
+// という関係にしておくと「編集して保存する対象」が ctrl だけに絞れる。
+void RebuildSlide(WaterSlide& s) {
+    s.pts.clear();
+    s.cum.clear();
+    s.length = 0.0f;
+    if (s.ctrl.size() < 2) return;
+    if (s.sub < 1) s.sub = 1;
 
+    const std::vector<Vector3>& ctrl = s.ctrl;
     for (int i = 0; i + 1 < (int)ctrl.size(); ++i) {
         Vector3 p0 = ctrl[(i - 1 < 0) ? 0 : i - 1];
         Vector3 p1 = ctrl[i];
         Vector3 p2 = ctrl[i + 1];
         Vector3 p3 = ctrl[(i + 2 >= (int)ctrl.size()) ? (int)ctrl.size() - 1 : i + 2];
-        for (int k = 0; k < sub; ++k) {
-            s.pts.push_back(CatmullRom(p0, p1, p2, p3, (float)k / (float)sub));
+        for (int k = 0; k < s.sub; ++k) {
+            s.pts.push_back(CatmullRom(p0, p1, p2, p3, (float)k / (float)s.sub));
         }
     }
     s.pts.push_back(ctrl.back());
@@ -123,6 +128,16 @@ static int AddSlide(Level& l, const std::vector<Vector3>& ctrl, float radius, in
         s.cum.push_back(s.cum[i] + Vector3Distance(s.pts[i], s.pts[i + 1]));
     }
     s.length = s.cum.back();
+}
+
+// 制御点からウォータースライダーを作る。当たり判定は作らない（中心線に沿わせる方式）。
+static int AddSlide(Level& l, const std::vector<Vector3>& ctrl, float radius, int sub = 8) {
+    if (ctrl.size() < 2) return -1;
+    WaterSlide s;
+    s.radius = radius;
+    s.ctrl   = ctrl;
+    s.sub    = sub;
+    RebuildSlide(s);
 
     l.slides.push_back(s);
     return (int)l.slides.size() - 1;

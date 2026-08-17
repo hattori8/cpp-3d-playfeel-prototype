@@ -98,11 +98,16 @@ void DrawGame(Game& g) {
     DrawAbilityFx(g);
     DrawParticles(g);
     DrawEffects(g);
+    if (g.editor.on) DrawEditor3D(g);   // 編集用の線と印は地形の上に重ねる
     EndMode3D();
 
-    DrawHUD(g);
-    if (g.debug.showDebug)  DrawDebugPanel(g);
-    if (g.debug.showParams) DrawParamEditor(g);
+    if (g.editor.on) {
+        DrawEditorUI(g);      // 編集中は HUD の代わりにエディタの表示だけ出す
+    } else {
+        DrawHUD(g);
+        if (g.debug.showDebug)  DrawDebugPanel(g);
+        if (g.debug.showParams) DrawParamEditor(g);
+    }
     EndDrawing();
 }
 
@@ -115,6 +120,17 @@ void DrawGame(Game& g) {
 //   ・カメラの追従は最後（最新のプレイヤー位置を使う）
 void FrameStep(Game& g, float frameDt) {
     if (frameDt > 1.0f / 20.0f) frameDt = 1.0f / 20.0f;   // 巨大な dt を潰す
+
+    // レベルエディタ（F4）。編集中は世界を止めて、入力も描画もエディタ側に渡す。
+    // 「止まっているものを触る」ようにすると、移動床やゲートが作者の置いた位置に
+    // 留まるので、編集と保存の対象が食い違わない。
+    if (IsKeyPressed(KEY_F4)) ToggleEditor(g);
+    if (g.editor.on) {
+        UpdateEditor(g, frameDt);
+        if (g.toastTimer > 0.0f) g.toastTimer -= frameDt;
+        DrawGame(g);
+        return;
+    }
 
     UpdateDebugKeys(g, frameDt);
 

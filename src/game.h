@@ -105,8 +105,12 @@ struct Button {
 // 中心線（折れ線）＋半径だけを持つ。管の当たり判定は作らず、乗っている間は
 // プレイヤーの位置を中心線から計算して置く（レールに沿わせる方式）。
 struct WaterSlide {
-    std::vector<Vector3> pts;          // Catmull-Rom で細分化済みの中心線
-    std::vector<float>   cum;          // 始点からの累積距離
+    // ctrl が「作者が置いた形」で、pts はそこから毎回作り直せる派生データ。
+    // エディタと level.txt が触るのは ctrl だけにして、保存と編集の対象を1つに絞る。
+    std::vector<Vector3> ctrl;         // 制御点（編集・保存の対象）
+    int                  sub = 8;      // 制御点1区間あたりの分割数
+    std::vector<Vector3> pts;          // Catmull-Rom で細分化済みの中心線（派生）
+    std::vector<float>   cum;          // 始点からの累積距離（派生）
     float length     = 0.0f;
     float radius     = 1.6f;
     float exitBoost  = 1.0f;           // 0 なら params.slideExitBoost を使う
@@ -399,6 +403,54 @@ struct GameDebug {
     int  lastReaction  = 0;   // 直近の Reaction（デバッグ表示用）
 };
 
+// ══════════════════════════════════════════════ Editor
+//
+// レベルエディタ（F4）の状態。ゲームプレイ側の struct には一切足さない。
+// エディタが消えても Level / Player は何も変わらない、という関係を保つ。
+
+// 編集できる物の種類。Level が持つ vector と1対1に対応させる。
+// 種類を増やすときは、この enum と editor.cpp の kEdTypeName / EdCount /
+// EdRef / level_io.cpp の読み書きの4箇所を足す。
+enum EditType {
+    ED_BOX = 0,
+    ED_PLATFORM,
+    ED_COIN,
+    ED_BOT,
+    ED_TARGET,
+    ED_SPRING,
+    ED_BUTTON,
+    ED_SLIDE,
+    ED_ANCHOR,
+    ED_ENEMY,
+    ED_PICKUP,
+    ED_CHECKPOINT,
+    ED_GOAL,
+    ED_TYPE_COUNT,
+};
+
+struct EditorState {
+    bool  on       = false;   // 編集モード中か（true の間はゲームを止める）
+    bool  dirty    = false;   // 地形を触ったか（抜けるときに物理世界を作り直す）
+    int   type     = ED_BOX;  // 選択中／これから置く種類
+    int   index    = -1;      // 選択中の添字（-1 = 未選択）
+    int   part     = 0;       // 0=全体, 移動床/敵なら 1=A 2=B, スライダーなら 1..n=制御点
+    int   field    = 0;       // 種類ごとの数値フィールドの選択位置（- / = で増減）
+    int   boxKind  = BOX_FLOOR;   // 新しく置く Box の種類
+    int   pickupKind = 1;         // 新しく置く能力アイテムの種類（AbilityType の値）
+
+    float grid     = 0.5f;    // スナップの刻み
+    bool  snap     = true;
+    bool  showHelp = true;
+
+    // フリーカメラ（軌道式）。ゲームの Rig とは別に持つ。
+    Vector3 camTarget = {0, 2, 0};
+    float   camYaw    = 0.0f;
+    float   camPitch  = 0.55f;
+    float   camDist   = 18.0f;
+
+    const char* path = nullptr;   // 読み書きに使った level.txt のパス
+};
+
 struct Game {
     Params p;
 
@@ -414,8 +466,9 @@ struct Game {
     std::vector<Effect>   effects;
     std::vector<Debris>   debris;      // 実体は world_physics.cpp（Jolt）側
 
-    GameStats stats;
-    GameDebug debug;
+    GameStats   stats;
+    GameDebug   debug;
+    EditorState editor;
 
     float time        = 0.0f;
     float hitStop     = 0.0f;
@@ -443,6 +496,8 @@ void  DrawLevel(Game& g);
 bool  BoxOverlap(Vector3 ca, Vector3 ha, Vector3 cb, Vector3 hb);
 bool  AnyOverlapSolid(const Level& l, Vector3 c, Vector3 h);
 float RaycastDown(const Level& l, Vector3 from, float maxDist, int* hitTargetOut);
+// 制御点(ctrl)から中心線(pts/cum/length)を作り直す。エディタと level_io から呼ぶ。
+void  RebuildSlide(WaterSlide& s);
 // スライダーの中心線サンプリング（player.cpp から使う）
 Vector3 SlidePoint(const WaterSlide& s, float dist);
 Vector3 SlideTangent(const WaterSlide& s, float dist);
@@ -503,6 +558,17 @@ void DrawDebugPanel(Game& g);
 void DrawParamEditor(Game& g);
 void SaveParams(const Game& g);
 void DumpParams(const Game& g);
+
+// ── level_io.cpp（level.txt の読み書き。エディタが無くても単体で使える）
+bool LoadLevel(Game& g, const char* path);   // path=nullptr なら既定の候補を探す
+bool SaveLevel(Game& g, const char* path);   // path=nullptr なら読んだパス / level.txt
+void DumpLevel(const Game& g);               // 標準出力へ（ブラウザでのコピペ用）
+
+// ── editor.cpp
+void ToggleEditor(Game& g);
+void UpdateEditor(Game& g, float rdt);       // 編集モード中は毎フレームこれだけ
+void DrawEditor3D(Game& g);                  // BeginMode3D の中
+void DrawEditorUI(Game& g);                  // 2D オーバーレイ
 
 // ── tests.cpp / tour.cpp
 int RunSelfTest(Game& g);
