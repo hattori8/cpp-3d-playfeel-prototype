@@ -100,7 +100,7 @@
   <button id="btnDefault">既定レベルに戻す</button>
   <input type="file" id="file" accept=".txt,text/plain" style="display:none">
   <span class="spacer"></span>
-  <a id="playLink" href="./index.html" class="playlink">▶ このレベルで遊ぶ（デモへ）</a>
+  <a id="playLink" href="./index.html?level=editor" class="playlink">▶ このレベルで遊ぶ（デモへ）</a>
   <span class="badge" id="autosave">自動保存 ON</span>
   <button id="btnUndo">元に戻す (Ctrl+Z)</button>
 </header>
@@ -1438,6 +1438,23 @@ const LS_KEY = 'astro_proto_level_v1';
 function saveLocal() {
   try { localStorage.setItem(LS_KEY, serializeLevel(L.level)); } catch (e) { /* 容量超過などは無視 */ }
 }
+
+// ══════════════════════════════════════════════ 遊ぶ側へのリンク
+//
+// デモ（index.html）はこのページの隣にある前提。リポジトリの tools/ から直接開いた
+// ときなど、隣に居ない場合はリンクを無効にして、代わりの手順を出す。
+(function setupPlayLink() {
+  var link = document.getElementById('playLink');
+  fetch('./index.html', { method: 'HEAD' })
+    .then(function (r) { if (!r.ok) throw new Error('not found'); })
+    .catch(function () {
+      link.removeAttribute('href');
+      link.style.opacity = '.45';
+      link.style.cursor = 'default';
+      link.title = 'このページの隣にデモ(index.html)が無いので開けません。'
+                 + '「level.txt を保存」で書き出して、ゲーム側で読み込んでください。';
+    });
+})();
 
 // ══════════════════════════════════════════════ 起動
 

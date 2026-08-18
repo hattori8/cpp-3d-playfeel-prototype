@@ -53,6 +53,10 @@
     border-radius: 4px; padding: 0 5px; font-size: 11.5px; font-family: inherit;
   }
   .btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  #toolbar { width: 1280px; max-width: 100%; margin-top: 12px; align-items: center; }
+  button.act.primary { background: #2d4a6b; border-color: #4a90d9; color: #fff; font-weight: 600; }
+  button.act.primary:hover { background: #375a82; }
+  button.act.on { background: #6b5a24; border-color: #ffd76e; color: #ffe9ad; }
   button.act {
     background: #262d38; color: #e7ebf2; border: 1px solid #3a434f; border-bottom-width: 2px;
     border-radius: 5px; padding: 6px 11px; font-size: 12.5px; font-family: inherit; cursor: pointer;
@@ -79,6 +83,16 @@
     <div id="bar"><i></i></div>
     <p id="veiltext">WebAssembly を展開しています。</p>
   </div>
+</div>
+
+<!-- キャンバスの直下。キーが効かない環境でも、ここから全部触れるようにしておく。 -->
+<div class="btnrow" id="toolbar">
+  <button class="act primary" id="btnEdit" disabled>レベルエディタ (F4)</button>
+  <button class="act" id="btnSave" disabled>level.txt を保存</button>
+  <button class="act" id="btnLoad" disabled>level.txt を読み込む</button>
+  <button class="act" id="btnFromEditor" disabled>エディタで編集したレベルを読み込む</button>
+  <a class="act" href="editor.html" style="text-decoration:none">▶ エディタのページを開く</a>
+  <input type="file" id="fileLevel" accept=".txt,text/plain" style="display:none">
 </div>
 
 <div class="panels">
@@ -128,17 +142,11 @@
       <tr><td>数値</td><td><kbd>,</kbd> <kbd>.</kbd> で項目、<kbd>-</kbd> <kbd>=</kbd> で増減</td></tr>
       <tr><td>カメラ</td><td>右ドラッグ回転 / ホイール / <kbd>WASDQE</kbd></td></tr>
     </table>
-    <div class="btnrow">
-      <button class="act" id="btnEdit"  disabled>編集モード切替 (F4)</button>
-      <button class="act" id="btnSave"  disabled>level.txt を保存</button>
-      <button class="act" id="btnLoad"  disabled>level.txt を読み込む</button>
-      <button class="act" id="btnFromEditor" disabled>エディタで編集したレベルを読み込む</button>
-      <input type="file" id="fileLevel" accept=".txt,text/plain" style="display:none">
-    </div>
     <p style="font-size:12px;color:#7d8b9f;margin:10px 0 0;line-height:1.7">
+      <b>キーが効かないときは、画面のすぐ下のボタンを使ってください。</b>
       <a href="editor.html" style="color:#ffd76e">レベルエディタのページ</a>で編集したものは、
-      上のボタンでそのまま読み込めます（同じブラウザに保存されているため）。
-      キャンバスに level.txt をドロップしても構いません。ブラウザ版の保存は
+      「エディタで編集したレベルを読み込む」でそのまま遊べます（同じブラウザに保存されているため）。
+      キャンバスに level.txt をドロップしても読み込めます。ブラウザ版の保存は
       <b>ダウンロード</b>です。降りてきた level.txt をリポジトリ直下に置いてビルドし直すと、
       公開版の既定レベルになります。
     </p>
@@ -167,6 +175,7 @@
     document.getElementById('bar').style.display = 'none';
     veil.insertAdjacentHTML('beforeend', '<div class="go">▶ CLICK TO PLAY</div>');
     enableLevelButtons();
+    maybeAutoLoadFromEditor();
   }
   veil.addEventListener('click', function () {
     if (!ready) return;
@@ -240,14 +249,45 @@
     btnFromEditor.disabled = !editorDraft();
   }
   function loadLevelText(text) {
-    if (callC('AstroLoadLevelText', ['string'], [text])) {
-      canvas.focus({ preventScroll: true });
+    if (!callC('AstroLoadLevelText', ['string'], [text])) return false;
+    canvas.focus({ preventScroll: true });
+    return true;
+  }
+
+  // エディタページの「このレベルで遊ぶ」から来たときだけ、下書きを自動で読み込む。
+  // ふつうに見に来た人の画面が勝手に変わらないよう、?level=editor が付いた時だけ動く。
+  function maybeAutoLoadFromEditor() {
+    if (!/(^|[?&])level=editor(&|$)/.test(location.search)) return;
+    var t = editorDraft();
+    if (!t) {
+      veiltext.innerHTML = 'エディタの編集内容が見つかりませんでした。<br>'
+        + '既定のレベルで開始します（同じブラウザで編集したものだけ引き継げます）。';
+      return;
+    }
+    if (loadLevelText(t)) {
+      veil.querySelector('h2').textContent = 'クリックで開始';
+      veiltext.innerHTML = '<b style="color:#ffd76e">エディタで編集したレベルを読み込みました。</b><br>'
+        + 'クリックすると、その状態で遊べます。<br>WASD で移動、Space でジャンプ、F4 でレベルエディタ。';
     }
   }
 
+  var editorOn = false;
   btnEdit.addEventListener('click', function () {
-    callC('AstroToggleEditor', [], []);
+    if (!callC('AstroToggleEditor', [], [])) return;
+    editorOn = !editorOn;
+    btnEdit.classList.toggle('on', editorOn);
+    btnEdit.textContent = editorOn ? 'レベルエディタを閉じる (F4)' : 'レベルエディタ (F4)';
+    // 開始前にボタンから入った場合も、そのままキーが使えるように覆いを外す
+    if (!started) { veil.style.display = 'none'; started = true; }
     canvas.focus({ preventScroll: true });
+  });
+  // F4 をゲーム側が受け取ったときも、ボタンの見た目を合わせる。
+  // キー入力は Emscripten の GLFW が window で拾うので、ここでは横から見ているだけ。
+  window.addEventListener('keydown', function (e) {
+    if (e.key !== 'F4' || !started) return;
+    editorOn = !editorOn;
+    btnEdit.classList.toggle('on', editorOn);
+    btnEdit.textContent = editorOn ? 'レベルエディタを閉じる (F4)' : 'レベルエディタ (F4)';
   });
   btnSave.addEventListener('click', function () {
     callC('AstroSaveLevelDownload', [], []);

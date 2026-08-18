@@ -103,7 +103,11 @@ if(ASTRO_WEB)
     # 古い emsdk の GLFW シムに足りない関数を補う（web/glfw_compat.h を参照）
     target_compile_options(astro_proto PRIVATE -include "${CMAKE_SOURCE_DIR}/web/glfw_compat.h")
 
-    set_target_properties(astro_proto PROPERTIES SUFFIX ".html")
+    # shell.html を書き換えただけのときも必ずリンクし直す
+    # （--shell-file は CMake から見えない依存なので、明示しないと取りこぼす）
+    set_target_properties(astro_proto PROPERTIES
+        SUFFIX ".html"
+        LINK_DEPENDS "${CMAKE_SOURCE_DIR}/web/shell.html")
 
     # wasm に同梱するファイル。level.txt はエディタで書き出したものを置けば
     # 公開版の既定レベルになる（無ければコードのレベルで起動する）。
