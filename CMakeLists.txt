@@ -43,6 +43,13 @@ FetchContent_Declare(raylib
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(raylib)
 
+# 古い emsdk（3.1.30 未満）の GLFW シムには raylib 5.5 が呼ぶ関数が足りない。
+# 宣言を raylib 自身のコンパイルにも押し込む（実体は web/glfw_compat.c のスタブ）。
+# 新しい emsdk では glfw_compat.h の中身が空になるので、付けたままで害はない。
+if(ASTRO_WEB)
+    target_compile_options(raylib PRIVATE -include "${CMAKE_SOURCE_DIR}/web/glfw_compat.h")
+endif()
+
 # ────────────────────────────────────────────── Jolt Physics 5.6
 #
 # 破片（world_physics.cpp）だけが使う。物理をやめたいときは、このブロックと
@@ -104,15 +111,26 @@ if(ASTRO_WEB)
     foreach(f params.txt level.txt)
         if(EXISTS "${CMAKE_SOURCE_DIR}/${f}")
             message(STATUS "embedding ${f}")
-            string(APPEND EMBED_FLAGS " --embed-file ${CMAKE_SOURCE_DIR}/${f}@/${f}")
+            list(APPEND EMBED_FLAGS "SHELL:--embed-file ${CMAKE_SOURCE_DIR}/${f}@/${f}")
         endif()
     endforeach()
+
+    # スタックの指定は 3.1.27 で TOTAL_STACK → STACK_SIZE に改名された。
+    # 古い emsdk（apt で入る 3.1.6 など）でも通るように出し分ける。
+    if(DEFINED EMSCRIPTEN_VERSION AND EMSCRIPTEN_VERSION VERSION_LESS 3.1.27)
+        set(ASTRO_STACK_FLAG "SHELL:-s TOTAL_STACK=1048576")
+    else()
+        set(ASTRO_STACK_FLAG "SHELL:-s STACK_SIZE=1048576")
+    endif()
 
     target_link_options(astro_proto PRIVATE
         "SHELL:-s USE_GLFW=3"
         "SHELL:-s ALLOW_MEMORY_GROWTH=1"
-        "SHELL:-s STACK_SIZE=1048576"
+        "${ASTRO_STACK_FLAG}"
         "SHELL:-s FORCE_FILESYSTEM=1"
+        # 出力 HTML の圧縮は切る。中身は自前の shell.html なので効果が薄いうえ、
+        # apt 版 emscripten 3.1.6 では htmlmin の呼び出しが壊れていてリンクが失敗する。
+        "SHELL:-s MINIFY_HTML=0"
         # レベルの受け渡しに shell.html から呼ぶ入口（level_io.cpp）
         "SHELL:-s EXPORTED_FUNCTIONS=['_main','_AstroLoadLevelText','_AstroSaveLevelDownload','_AstroToggleEditor']"
         "SHELL:-s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS']"

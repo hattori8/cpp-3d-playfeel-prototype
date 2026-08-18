@@ -66,6 +66,10 @@
 
 <h1>astro_proto ─ アストロボット風 基本操作プロトタイプ</h1>
 <p class="sub">C++17 + raylib を WebAssembly にビルドしたもの。ネイティブ版と同じソースです。</p>
+<p class="sub" style="margin:-8px 0 14px">
+  <a href="editor.html" style="color:#ffd76e;font-weight:600;text-decoration:none;border-bottom:1px solid #6b5a24">▶ レベルエディタを開く</a>
+  &nbsp;─&nbsp;<span style="color:#7d8b9f">ブラウザだけでコースを編集して level.txt を書き出せます</span>
+</p>
 
 <div id="frame">
   <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
@@ -128,10 +132,13 @@
       <button class="act" id="btnEdit"  disabled>編集モード切替 (F4)</button>
       <button class="act" id="btnSave"  disabled>level.txt を保存</button>
       <button class="act" id="btnLoad"  disabled>level.txt を読み込む</button>
+      <button class="act" id="btnFromEditor" disabled>エディタで編集したレベルを読み込む</button>
       <input type="file" id="fileLevel" accept=".txt,text/plain" style="display:none">
     </div>
     <p style="font-size:12px;color:#7d8b9f;margin:10px 0 0;line-height:1.7">
-      キャンバスに level.txt をドロップしても読み込めます。ブラウザ版の保存は
+      <a href="editor.html" style="color:#ffd76e">レベルエディタのページ</a>で編集したものは、
+      上のボタンでそのまま読み込めます（同じブラウザに保存されているため）。
+      キャンバスに level.txt をドロップしても構いません。ブラウザ版の保存は
       <b>ダウンロード</b>です。降りてきた level.txt をリポジトリ直下に置いてビルドし直すと、
       公開版の既定レベルになります。
     </p>
@@ -203,7 +210,18 @@
   var btnEdit = document.getElementById('btnEdit');
   var btnSave = document.getElementById('btnSave');
   var btnLoad = document.getElementById('btnLoad');
+  var btnFromEditor = document.getElementById('btnFromEditor');
   var fileLevel = document.getElementById('fileLevel');
+
+  // レベルエディタのページ（editor.html）が置いていく下書き。
+  // 同じブラウザなら、ファイルをやり取りせずにそのまま遊べる。
+  var EDITOR_LS_KEY = 'astro_proto_level_v1';
+  function editorDraft() {
+    try {
+      var t = localStorage.getItem(EDITOR_LS_KEY);
+      return (t && t.length > 40) ? t : null;
+    } catch (err) { return null; }
+  }
 
   function callC(name, argTypes, args) {
     if (typeof Module === 'undefined' || !Module.ccall) return false;
@@ -219,6 +237,7 @@
     btnEdit.disabled = false;
     btnSave.disabled = false;
     btnLoad.disabled = false;
+    btnFromEditor.disabled = !editorDraft();
   }
   function loadLevelText(text) {
     if (callC('AstroLoadLevelText', ['string'], [text])) {
@@ -235,6 +254,10 @@
     canvas.focus({ preventScroll: true });
   });
   btnLoad.addEventListener('click', function () { fileLevel.click(); });
+  btnFromEditor.addEventListener('click', function () {
+    var t = editorDraft();
+    if (t) loadLevelText(t);
+  });
   fileLevel.addEventListener('change', function () {
     var f = fileLevel.files && fileLevel.files[0];
     if (!f) return;
