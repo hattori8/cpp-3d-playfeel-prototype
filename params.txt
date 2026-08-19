@@ -1,140 +1,106 @@
-# astro_proto ─ 触り心地のパラメータ
-# F5 で読み直し / F6 で保存
-
-
-# ── 移動
-moveSpeed              8.5000  # 最大歩行速度 (m/s)  [0 .. 30]
-moveAccel             70.0000  # 地上の加速度  [1 .. 300]
-moveDecel             55.0000  # 地上の減速度 (入力なし)  [1 .. 300]
-airAccel              34.0000  # 空中の加速度  [1 .. 200]
-turnSpeed             14.0000  # 向きの追従速度 (rad/s)  [1 .. 60]
-
-# ── ジャンプ
-gravity               34.0000  # 重力  [5 .. 120]
-maxFall               28.0000  # 最大落下速度  [5 .. 100]
-jumpSpeed             12.5000  # ジャンプ初速  [3 .. 35]
-jumpCutSpeed           4.0000  # ボタンを離した時の上昇打ち切り速度  [0 .. 20]
-coyoteTime             0.0900  # 地面を離れてもジャンプできる猶予 (s)  [0 .. 0.5]
-jumpBufferTime         0.1000  # 着地前の先行入力を拾う時間 (s)  [0 .. 0.5]
-apexThreshold          3.0000  # この上下速度以下を頂点付近と見なす  [0 .. 10]
-apexGravityScale       0.5500  # 頂点付近の重力倍率 (滞空感)  [0.1 .. 1]
-
-# ── ホバー
-hoverDelay             0.2800  # ジャンプ後ホバーに移れるまでの時間 (s)  [0 .. 1]
-hoverFuelMax           1.6000  # ホバー燃料 (s)  [0 .. 5]
-hoverTargetVy         -0.6000  # ホバー中の目標上下速度 (ゆっくり沈む)  [-8 .. 4]
-hoverAccel            55.0000  # 落下時にホバーが支える強さ  [1 .. 200]
-hoverBrake            16.0000  # 上昇をホバーが打ち消す強さ (小さいと跳ねが残る)  [1 .. 200]
-hoverStartBoost        2.5000  # ホバー開始時の一押し  [-5 .. 15]
-hoverControlMul        1.3500  # ホバー中の空中制御倍率  [0.1 .. 3]
-
-# ── 攻撃
-punchDuration          0.2800  # スピンパンチの持続 (s)  [0.05 .. 1]
-punchCooldown          0.3600  # パンチの再使用間隔 (s)  [0.05 .. 1.5]
-punchRange             1.2500  # パンチ判定の前方オフセット  [0.2 .. 4]
-punchRadius            1.0500  # パンチ判定の半径  [0.2 .. 4]
-punchLunge             4.0000  # パンチ時の前方への踏み込み速度  [0 .. 20]
-punchImpulse          17.0000  # 命中時に相手を飛ばす力  [0 .. 60]
-laserInterval          0.1200  # ホバー中レーザーの発射間隔 (s)  [0.02 .. 1]
-laserRange            16.0000  # レーザー射程  [1 .. 60]
-
-# ── 能力: ダッシュ
-dashSpeed             18.0000  # ダッシュ中の速度  [1 .. 60]
-dashAccel             90.0000  # ダッシュの立ち上がり  [5 .. 400]
-dashFuelMax            0.7000  # ダッシュの持続 (s)  [0.1 .. 3]
-dashCooldown           0.2500  # ダッシュ終了後の再使用間隔 (s)  [0 .. 2]
-dashTurnMul            0.3500  # ダッシュ中の旋回のききにくさ  [0 .. 1]
-dashHitRadius          1.1000  # ダッシュ中の体当たり判定半径  [0.2 .. 4]
-
-# ── 能力: ワイヤー
-wireRange             15.0000  # ワイヤーが届く距離  [2 .. 40]
-wireAimDot             0.1500  # 狙いの許容（大きいほど正面のみ）  [-1 .. 1]
-wireMinLength          2.2000  # ロープの最短  [0.5 .. 10]
-wireReelSpeed          2.5000  # 押し続けた時にたぐり寄せる速さ  [0 .. 30]
-wireGravityScale       1.0000  # ぶら下がり中の重力倍率  [0 .. 2]
-wireAirAccel          18.0000  # ぶら下がり中の空中制御  [0 .. 100]
-wireSwingBoost         7.0000  # 振り出しの初速（棒立ちでも振れる）  [0 .. 30]
-wireReleaseBoost       3.5000  # 離した瞬間の上向きの足し  [0 .. 20]
-wireDamping            0.1500  # ロープの減衰（大きいと止まる）  [0 .. 3]
-wirePullSpeed         16.0000  # Heavy を引き寄せる速さ  [1 .. 60]
-wireCamDistMul         1.2500  # ぶら下がり中のカメラ距離の倍率  [0.5 .. 3]
-
-# ── ウォータースライダー
-slideGravity          40.0000  # 斜面に沿って加速する強さ  [1 .. 120]
-slideFlowSpeed        15.0000  # 水流が押し出す基準速度  [0 .. 40]
-slideFlowAccel         2.5000  # 基準速度へ寄る速さ（弱くすると勾配が効く）  [0.5 .. 60]
-slideMinSpeed          8.0000  # スライダー中の最低速度  [0 .. 30]
-slideMaxSpeed         30.0000  # スライダー中の最高速度  [2 .. 60]
-slideSteer            14.0000  # 左右に寄せる速さ  [0 .. 60]
-slideSideMax           0.6500  # 横に寄れる量（半径に対する比）  [0 .. 1]
-slideBank              0.5500  # 横に寄った時に壁を登る量  [0 .. 2]
-slideExitBoost         1.1500  # 出口で速度に掛ける倍率  [0.5 .. 3]
-slideJumpOff           9.0000  # 途中で飛び降りる時の上向き初速  [0 .. 25]
-slideCamTurn           4.0000  # 滑走中にカメラが進行方向へ回る速さ  [0.2 .. 20]
-slideCamDistMul        1.3000  # 滑走中のカメラ距離の倍率  [0.5 .. 3]
-
-# ── ギミック
-springPower           20.0000  # バネで打ち上げられる初速  [3 .. 45]
-buttonOpenTime         6.0000  # ボタンでゲートが開いている時間 (s)  [0.5 .. 30]
-gateMoveSpeed          6.0000  # ゲートの開閉速度  [0.5 .. 30]
-
-# ── 敵
-enemySpeed             3.0000  # 敵の巡回速度  [0 .. 15]
-stompBounce           11.0000  # 踏みつけ後に跳ね上がる初速  [0 .. 30]
-damageKnockback       10.0000  # 被弾時に吹き飛ばされる速さ  [0 .. 40]
-invulnTime             1.0000  # 被弾後の無敵時間 (s)  [0 .. 5]
-
-# ── 地形
-stepHeight             0.4500  # 自動で登れる段差の高さ  [0 .. 2]
-
-# ── カメラ
-camDist                8.0000  # カメラ距離  [2 .. 25]
-camTargetY             0.8500  # 注視点の高さオフセット  [-2 .. 5]
-camYawSpeed            2.6000  # カメラ左右の回転速度 (rad/s)  [0.2 .. 10]
-camPitchDefault        0.3000  # 通常の見下ろし角 (rad)  [-0.3 .. 1.2]
-camPitchFall           0.6200  # 落下中の見下ろし角 (rad)  [-0.3 .. 1.2]
-camPitchSmooth         3.5000  # 見下ろし角の追従速度  [0.2 .. 20]
-camPosSmooth          11.0000  # カメラ位置の追従速度  [0.5 .. 40]
-camShakeDecay          6.0000  # カメラ揺れの減衰  [0.5 .. 30]
-
-# ── 演出（攻撃の見え方）
-punchArcWidth          1.5000  # スピンパンチの弧の大きさ  [0.3 .. 5]
-punchArcSweep        240.0000  # 弧が振り抜ける角度 (度)  [30 .. 720]
-laserWidth             0.2200  # レーザーの太さ  [0.02 .. 1]
-fxRingLife             0.3200  # 衝撃リングの寿命 (s)  [0.05 .. 2]
-fxRingSize             2.8000  # 衝撃リングの最大半径  [0.3 .. 10]
-camKickBreak           0.1200  # 破壊時にカメラが寄る量  [0 .. 0.5]
-
-# ── 演出
-hitStopTime            0.0550  # 命中時のヒットストップ (s)  [0 .. 0.3]
-shakeBreak             0.2200  # 破壊時のカメラ揺れ  [0 .. 2]
-shakeDamage            0.5000  # 被弾時のカメラ揺れ  [0 .. 2]
-shakeLand              0.0900  # 着地時のカメラ揺れ  [0 .. 2]
-
-# ── 取得判定
-coinRadius             1.1500  # コインの取得半径  [0.2 .. 4]
-botRadius              1.3000  # ボットの救出半径  [0.2 .. 4]
-pickupRadius           1.4000  # 能力アイテムの取得半径  [0.2 .. 4]
-
-# ── 破片（Jolt が回す world 側の物理。主人公の手触りには一切関わらない）
-debrisCount           11.0000  # 1回の破壊で出る破片の数  [0 .. 40]
-debrisSize             0.2100  # 破片の一辺の半分 (m)  [0.05 .. 1]
-debrisPower            7.2000  # 破片が飛び散る初速 (m/s)  [0 .. 30]
-debrisLift             0.5500  # 破片の初速のうち上向きの割合  [0 .. 3]
-debrisSpin            14.0000  # 破片の初期回転 (rad/s)  [0 .. 60]
-debrisLife             7.0000  # 破片が消えるまでの時間 (s)  [0.5 .. 30]
-debrisFade             1.2000  # 破片が縮んで消える時間 (s)  [0.1 .. 5]
-debrisMax            140.0000  # 同時に存在できる破片の上限  [0 .. 400]
-debrisRestitution      0.2800  # 破片の跳ね返り  [0 .. 1]
-debrisFriction         0.4800  # 破片の摩擦  [0 .. 2]
-debrisImpactMin        3.2000  # 火花を出す衝突速度のしきい値 (m/s)  [0.2 .. 20]
-debrisPushRadius       0.6200  # 歩いて破片を蹴散らす当たりの半径  [0.1 .. 3]
-
-# ── 演出（ジェット。控えめが既定。派手にしたければ数値を上げる）
-jumpPuffCount          3.0000  # ジャンプ時に足元へ出る土煙の数  [0 .. 20]
-hoverStartPuff         4.0000  # ホバー開始の一吹きの粒の数  [0 .. 20]
-jetPuffRate           14.0000  # ホバー中のジェット粒の毎秒発生数  [0 .. 90]
-jetPuffSize            0.1150  # ジェット粒の大きさ  [0.02 .. 0.5]
-jetFlameLen            0.3800  # ジェット炎の長さ  [0 .. 1.5]
-jetFlameWidth          0.0750  # ジェット炎の太さ  [0.01 .. 0.4]
-jetFlameAlpha        165.0000  # ジェット炎と粒の濃さ (0=消える)  [0 .. 255]
+# astro_proto tuning params (F6 で上書き保存 / F5 で読み直し)
+moveSpeed              8.5000   # 最大歩行速度 (m/s)
+moveAccel             70.0000   # 地上の加速度
+moveDecel             55.0000   # 地上の減速度 (入力なし)
+airAccel              34.0000   # 空中の加速度
+turnSpeed             14.0000   # 向きの追従速度 (rad/s)
+gravity               34.0000   # 重力
+maxFall               28.0000   # 最大落下速度
+jumpSpeed             12.5000   # ジャンプ初速
+jumpCutSpeed           4.0000   # ボタンを離した時の上昇打ち切り速度
+coyoteTime             0.0900   # 地面を離れてもジャンプできる猶予 (s)
+jumpBufferTime         0.1000   # 着地前の先行入力を拾う時間 (s)
+apexThreshold          3.0000   # この上下速度以下を頂点付近と見なす
+apexGravityScale       0.5500   # 頂点付近の重力倍率 (滞空感)
+hoverDelay             0.2800   # ジャンプ後ホバーに移れるまでの時間 (s)
+hoverFuelMax           1.6000   # ホバー燃料 (s)
+hoverTargetVy         -0.6000   # ホバー中の目標上下速度 (ゆっくり沈む)
+hoverAccel            55.0000   # 落下時にホバーが支える強さ
+hoverBrake            16.0000   # 上昇をホバーが打ち消す強さ (小さいと跳ねが残る)
+hoverStartBoost        2.5000   # ホバー開始時の一押し
+hoverControlMul        1.3500   # ホバー中の空中制御倍率
+punchDuration          0.2800   # スピンパンチの持続 (s)
+punchCooldown          0.3600   # パンチの再使用間隔 (s)
+punchRange             1.2500   # パンチ判定の前方オフセット
+punchRadius            1.0500   # パンチ判定の半径
+punchLunge             4.0000   # パンチ時の前方への踏み込み速度
+punchImpulse          17.0000   # 命中時に相手を飛ばす力
+laserInterval          0.1200   # ホバー中レーザーの発射間隔 (s)
+laserRange            16.0000   # レーザー射程
+dashSpeed             18.0000   # ダッシュ中の速度
+dashAccel             90.0000   # ダッシュの立ち上がり
+dashFuelMax            0.7000   # ダッシュの持続 (s)
+dashCooldown           0.2500   # ダッシュ終了後の再使用間隔 (s)
+dashTurnMul            0.3500   # ダッシュ中の旋回のききにくさ
+dashHitRadius          1.1000   # ダッシュ中の体当たり判定半径
+wireRange             15.0000   # ワイヤーが届く距離
+wireAimDot             0.1500   # 狙いの許容（大きいほど正面のみ）
+wireMinLength          2.2000   # ロープの最短
+wireReelSpeed          2.5000   # 押し続けた時にたぐり寄せる速さ
+wireGravityScale       1.0000   # ぶら下がり中の重力倍率
+wireAirAccel          18.0000   # ぶら下がり中の空中制御
+wireSwingBoost         7.0000   # 振り出しの初速（棒立ちでも振れる）
+wireReleaseBoost       3.5000   # 離した瞬間の上向きの足し
+wireDamping            0.1500   # ロープの減衰（大きいと止まる）
+wirePullSpeed         16.0000   # Heavy を引き寄せる速さ
+wireCamDistMul         1.2500   # ぶら下がり中のカメラ距離の倍率
+slideGravity          40.0000   # 斜面に沿って加速する強さ
+slideFlowSpeed        15.0000   # 水流が押し出す基準速度
+slideFlowAccel         2.5000   # 基準速度へ寄る速さ（弱くすると勾配が効く）
+slideMinSpeed          8.0000   # スライダー中の最低速度
+slideMaxSpeed         30.0000   # スライダー中の最高速度
+slideSteer            14.0000   # 左右に寄せる速さ
+slideSideMax           0.6500   # 横に寄れる量（半径に対する比）
+slideBank              0.5500   # 横に寄った時に壁を登る量
+slideExitBoost         1.1500   # 出口で速度に掛ける倍率
+slideJumpOff           9.0000   # 途中で飛び降りる時の上向き初速
+slideCamTurn           4.0000   # 滑走中にカメラが進行方向へ回る速さ
+slideCamDistMul        1.3000   # 滑走中のカメラ距離の倍率
+springPower           20.0000   # バネで打ち上げられる初速
+buttonOpenTime         6.0000   # ボタンでゲートが開いている時間 (s)
+gateMoveSpeed          6.0000   # ゲートの開閉速度
+enemySpeed             3.0000   # 敵の巡回速度
+stompBounce           11.0000   # 踏みつけ後に跳ね上がる初速
+damageKnockback       10.0000   # 被弾時に吹き飛ばされる速さ
+invulnTime             1.0000   # 被弾後の無敵時間 (s)
+stepHeight             0.4500   # 自動で登れる段差の高さ
+camDist                8.0000   # カメラ距離
+camTargetY             0.8500   # 注視点の高さオフセット
+camYawSpeed            2.6000   # カメラ左右の回転速度 (rad/s)
+camPitchDefault        0.3000   # 通常の見下ろし角 (rad)
+camPitchFall           0.6200   # 落下中の見下ろし角 (rad)
+camPitchSmooth         3.5000   # 見下ろし角の追従速度
+camPosSmooth          11.0000   # カメラ位置の追従速度
+camShakeDecay          6.0000   # カメラ揺れの減衰
+punchArcWidth          1.5000   # スピンパンチの弧の大きさ
+punchArcSweep        240.0000   # 弧が振り抜ける角度 (度)
+laserWidth             0.2200   # レーザーの太さ
+fxRingLife             0.3200   # 衝撃リングの寿命 (s)
+fxRingSize             2.8000   # 衝撃リングの最大半径
+camKickBreak           0.1200   # 破壊時にカメラが寄る量
+jumpPuffCount          3.0000   # ジャンプ時に足元へ出る土煙の数
+hoverStartPuff         4.0000   # ホバー開始の一吹きの粒の数
+jetPuffRate           14.0000   # ホバー中のジェット粒の毎秒発生数
+jetPuffSize            0.1150   # ジェット粒の大きさ
+jetFlameLen            0.3800   # ジェット炎の長さ
+jetFlameWidth          0.0750   # ジェット炎の太さ
+jetFlameAlpha        165.0000   # ジェット炎と粒の濃さ (0=消える)
+hitStopTime            0.0550   # 命中時のヒットストップ (s)
+shakeBreak             0.2200   # 破壊時のカメラ揺れ
+shakeDamage            0.5000   # 被弾時のカメラ揺れ
+shakeLand              0.0900   # 着地時のカメラ揺れ
+coinRadius             1.1500   # コインの取得半径
+botRadius              1.3000   # ボットの救出半径
+pickupRadius           1.4000   # 能力アイテムの取得半径
+debrisCount           11.0000   # 1回の破壊で出る破片の数
+debrisSize             0.2100   # 破片の一辺の半分 (m)
+debrisPower            7.2000   # 破片が飛び散る初速 (m/s)
+debrisLift             0.5500   # 破片の初速のうち上向きの割合
+debrisSpin            14.0000   # 破片の初期回転 (rad/s)
+debrisLife             7.0000   # 破片が消えるまでの時間 (s)
+debrisFade             1.2000   # 破片が縮んで消える時間 (s)
+debrisMax            140.0000   # 同時に存在できる破片の上限
+debrisRestitution      0.2800   # 破片の跳ね返り
+debrisFriction         0.4800   # 破片の摩擦
+debrisImpactMin        3.2000   # 火花を出す衝突速度のしきい値 (m/s)
+debrisPushRadius       0.6200   # 歩いて破片を蹴散らす当たりの半径

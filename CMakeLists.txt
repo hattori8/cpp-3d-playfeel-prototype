@@ -109,8 +109,9 @@ if(ASTRO_WEB)
         SUFFIX ".html"
         LINK_DEPENDS "${CMAKE_SOURCE_DIR}/web/shell.html")
 
-    # wasm に同梱するファイル。level.txt はエディタで書き出したものを置けば
-    # 公開版の既定レベルになる（無ければコードのレベルで起動する）。
+    # wasm に同梱するファイル。これは「取りに行けなかったときの控え」で、
+    # 公開版では shell.html が docs/ の params.txt / level.txt を取ってきて上書きする。
+    # そのおかげで、レベルを差し替えるのに wasm のリビルドは要らない。
     set(EMBED_FLAGS "")
     foreach(f params.txt level.txt)
         if(EXISTS "${CMAKE_SOURCE_DIR}/${f}")
@@ -137,7 +138,7 @@ if(ASTRO_WEB)
         "SHELL:-s MINIFY_HTML=0"
         # レベルの受け渡しに shell.html から呼ぶ入口（level_io.cpp）
         "SHELL:-s EXPORTED_FUNCTIONS=['_main','_AstroLoadLevelText','_AstroSaveLevelDownload','_AstroToggleEditor']"
-        "SHELL:-s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS']"
+        "SHELL:-s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','addRunDependency','removeRunDependency']"
         "SHELL:-s SINGLE_FILE=1"           # wasm を html に埋め込んで1ファイルにする
         "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/web/shell.html"
         ${EMBED_FLAGS})

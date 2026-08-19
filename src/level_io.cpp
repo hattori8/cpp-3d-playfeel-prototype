@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <sys/stat.h>
 
 #if defined(PLATFORM_WEB)
   #include <emscripten.h>
@@ -46,7 +47,14 @@ static const char* kCandidates[] = {
     "level.txt", "../level.txt", "../../level.txt", "../../../level.txt",
 };
 
-static char s_path[512] = {0};
+static char      s_path[512] = {0};
+static long long s_mtime     = 0;    // 自動読み直しの判定に使う（params.cpp と同じ作り）
+
+static long long FileMTime(const char* path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+    return (long long)st.st_mtime;
+}
 
 // params.txt が見つかっているなら、その隣を level.txt の置き場にする。
 // 実行ディレクトリがビルドフォルダでも、ソースツリー側へ保存できるようにするため。
@@ -163,6 +171,7 @@ bool SaveLevel(Game& g, const char* path) {
     fclose(f);
 
     snprintf(s_path, sizeof(s_path), "%s", target);
+    s_mtime = FileMTime(s_path);      // 自分で書いた分で読み直しが走らないように
     g.editor.path = s_path;
     printf("[level] saved to %s\n", s_path);
     fflush(stdout);
@@ -404,6 +413,7 @@ bool LoadLevel(Game& g, const char* path) {
     FixupLevel(nl);
 
     snprintf(s_path, sizeof(s_path), "%s", found);
+    s_mtime = FileMTime(s_path);
     g.editor.path = s_path;
 
     g.level = nl;
@@ -425,6 +435,23 @@ bool LoadLevel(Game& g, const char* path) {
     printf("[level] loaded %d lines (%d bad) from %s\n", applied, bad, s_path);
     fflush(stdout);
     return true;
+}
+
+// level.txt が外で書き換わっていたら読み直す。
+//
+// 狙いは「ブラウザのエディタで保存 → ゲームに切り替えたらもう新しい」という往復。
+// params.txt のホットリロード（params.cpp）と同じ仕掛けで、ポーリングは game.cpp 側。
+// ブラウザ版はファイルが MEMFS の中にしか無いので何もしない。
+bool ReloadLevelIfChanged(Game& g) {
+#if defined(PLATFORM_WEB)
+    (void)g;
+    return false;
+#else
+    if (!s_path[0]) return false;
+    long long t = FileMTime(s_path);
+    if (t == 0 || t == s_mtime) return false;
+    return LoadLevel(g, s_path);
+#endif
 }
 
 // ────────────────────────────────────────────── ブラウザ側の入口

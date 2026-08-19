@@ -563,6 +563,7 @@ void DumpParams(const Game& g);
 bool LoadLevel(Game& g, const char* path);   // path=nullptr なら既定の候補を探す
 bool SaveLevel(Game& g, const char* path);   // path=nullptr なら読んだパス / level.txt
 void DumpLevel(const Game& g);               // 標準出力へ（ブラウザでのコピペ用）
+bool ReloadLevelIfChanged(Game& g);          // 外で level.txt が更新されていたら読み直す
 
 // ── editor.cpp
 void ToggleEditor(Game& g);

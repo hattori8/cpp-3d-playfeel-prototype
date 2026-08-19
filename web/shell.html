@@ -68,10 +68,11 @@
 </head>
 <body>
 
-<h1>astro_proto ─ アストロボット風 基本操作プロトタイプ</h1>
+<h1>astro_proto ─ アストロボット風 基本操作プロトタイプ
+  <span style="font-size:11px;color:#5f6b7c;font-weight:400;margin-left:6px">v4 (2026-08-19)</span></h1>
 <p class="sub">C++17 + raylib を WebAssembly にビルドしたもの。ネイティブ版と同じソースです。</p>
 <p class="sub" style="margin:-8px 0 14px">
-  <a href="editor.html" style="color:#ffd76e;font-weight:600;text-decoration:none;border-bottom:1px solid #6b5a24">▶ レベルエディタを開く</a>
+  <a href="editor.html?v=4" style="color:#ffd76e;font-weight:600;text-decoration:none;border-bottom:1px solid #6b5a24">▶ レベルエディタを開く</a>
   &nbsp;─&nbsp;<span style="color:#7d8b9f">ブラウザだけでコースを編集して level.txt を書き出せます</span>
 </p>
 
@@ -91,7 +92,7 @@
   <button class="act" id="btnSave" disabled>level.txt を保存</button>
   <button class="act" id="btnLoad" disabled>level.txt を読み込む</button>
   <button class="act" id="btnFromEditor" disabled>エディタで編集したレベルを読み込む</button>
-  <a class="act" href="editor.html" style="text-decoration:none">▶ エディタのページを開く</a>
+  <a class="act" href="editor.html?v=4" style="text-decoration:none">▶ エディタのページを開く</a>
   <input type="file" id="fileLevel" accept=".txt,text/plain" style="display:none">
 </div>
 
@@ -144,7 +145,7 @@
     </table>
     <p style="font-size:12px;color:#7d8b9f;margin:10px 0 0;line-height:1.7">
       <b>キーが効かないときは、画面のすぐ下のボタンを使ってください。</b>
-      <a href="editor.html" style="color:#ffd76e">レベルエディタのページ</a>で編集したものは、
+      <a href="editor.html?v=4" style="color:#ffd76e">レベルエディタのページ</a>で編集したものは、
       「エディタで編集したレベルを読み込む」でそのまま遊べます（同じブラウザに保存されているため）。
       キャンバスに level.txt をドロップしても読み込めます。ブラウザ版の保存は
       <b>ダウンロード</b>です。降りてきた level.txt をリポジトリ直下に置いてビルドし直すと、
@@ -328,8 +329,28 @@
     r.readAsText(f);
   });
 
+  // ── 起動前に params.txt / level.txt を取ってきて、wasm の中の作業領域へ置く
+  //
+  // 埋め込み版（ビルド時に同梱したもの）を上書きする形にしている。こうすると
+  // 「level.txt を差し替えて push しただけ」で公開版のレベルが変わる。
+  // 取れなかったとき（file:// で直接開いた等）は埋め込み版がそのまま残る。
+  function fetchIntoFS(name) {
+    Module.addRunDependency(name);
+    // 更新がすぐ効くように毎回キャッシュを避ける
+    fetch(name + '?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.arrayBuffer() : Promise.reject(r.status); })
+      .then(function (buf) {
+        FS.writeFile('/' + name, new Uint8Array(buf));
+        console.log('[web] ' + name + ' を読み込みました (' + buf.byteLength + ' bytes)');
+      })
+      .catch(function (err) {
+        console.warn('[web] ' + name + ' を取得できませんでした（同梱版で起動します）', err);
+      })
+      .finally(function () { Module.removeRunDependency(name); });
+  }
+
   var Module = {
-    preRun: [],
+    preRun: [function () { fetchIntoFS('params.txt'); fetchIntoFS('level.txt'); }],
     postRun: [function () { setTimeout(showReady, 250); }],
     print: function (text) { console.log(text); },
     printErr: function (text) { console.warn(text); },

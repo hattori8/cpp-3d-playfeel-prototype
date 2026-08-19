@@ -94,13 +94,14 @@
 <body>
 
 <header>
-  <h1>astro_proto ─ レベルエディタ</h1>
+  <h1>astro_proto ─ レベルエディタ
+    <span style="font-size:11px;color:#5f6b7c;font-weight:400;margin-left:6px">v4 (2026-08-19)</span></h1>
   <button id="btnOpen">level.txt を開く</button>
   <button id="btnSave" class="primary">level.txt を保存</button>
   <button id="btnDefault">既定レベルに戻す</button>
   <input type="file" id="file" accept=".txt,text/plain" style="display:none">
   <span class="spacer"></span>
-  <a id="playLink" href="./index.html?level=editor" class="playlink">▶ このレベルで遊ぶ（デモへ）</a>
+  <a id="playLink" href="./index.html?level=editor&v=4" class="playlink">▶ このレベルで遊ぶ（デモへ）</a>
   <span class="badge" id="autosave">自動保存 ON</span>
   <button id="btnUndo">元に戻す (Ctrl+Z)</button>
 </header>
@@ -1006,12 +1007,16 @@ window.addEventListener('mousemove', (ev) => {
     const now = rayToPlane(ev, drag.base, drag.horizontal);
     if (!now) return;
     if (!drag.moved) { pushUndo(); drag.moved = true; }
-    const want = {
-      x: snap(drag.base.x + (now.x - drag.start.x)),
-      y: drag.horizontal ? p.y : snap(drag.base.y + (now.y - drag.start.y)),
-      z: snap(drag.base.z + (now.z - drag.start.z)),
-    };
-    if (drag.horizontal) want.y = p.y;
+    // 水平ドラッグは XZ だけ、Shift の縦ドラッグは Y だけを動かす。
+    // 縦のときに使う平面はカメラを向いた縦面なので、放っておくと横にも滑る。
+    // 「上下だけ動かしたい」という意図のほうを優先して、他の軸は据え置く。
+    const want = drag.horizontal
+      ? { x: snap(drag.base.x + (now.x - drag.start.x)),
+          y: p.y,
+          z: snap(drag.base.z + (now.z - drag.start.z)) }
+      : { x: p.x,
+          y: snap(drag.base.y + (now.y - drag.start.y)),
+          z: p.z };
     translate(sel, V(want.x - p.x, want.y - p.y, want.z - p.z));
     changed(false, true);
     return;

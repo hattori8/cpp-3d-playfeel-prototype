@@ -138,6 +138,8 @@ void FrameStep(Game& g, float frameDt) {
     if (s_reloadPoll > 0.4f) {
         s_reloadPoll = 0.0f;
         if (ReloadParamsIfChanged(g.p)) Toast(g, "PARAMS HOT-RELOADED");
+        // level.txt も同じ扱いにする。外のエディタで保存した瞬間に反映される。
+        if (ReloadLevelIfChanged(g))    Toast(g, "LEVEL HOT-RELOADED");
     }
 
     GatherInput(g);
