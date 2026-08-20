@@ -82,7 +82,7 @@ static void WriteLevel(const Level& l, FILE* f) {
 
     // ── box（この順番がそのまま添字になる。platform / button / anchor が参照する）
     fprintf(f, "# box  cx cy cz  hx hy hz  kind"
-               "   (0=床 1=段差 2=壁 3=動く床 4=サブパス 5=ゲート 6=崩れる床 9=遠景)\n");
+               "   (0=床 1=段差 2=壁 3=動く床 4=サブパス 5=ゲート 6=崩れる床 7=積み木 9=遠景)\n");
     for (int i = 0; i < (int)l.boxes.size(); ++i) {
         const Box& b = l.boxes[i];
         Vector3 c = b.c;
@@ -93,6 +93,9 @@ static void WriteLevel(const Level& l, FILE* f) {
             if (bt.gateBoxIndex == i) c = bt.gateClosed;
         for (const Crumble& cr : l.crumbles)
             if (cr.boxIndex == i) c = cr.home;
+        // 積み木は物理で転がっているので、置いた位置に戻して書く
+        for (const Crate& cb : l.crates)
+            if (cb.boxIndex == i) c = cb.home;
         fprintf(f, "box  %8.3f %8.3f %8.3f   %7.3f %7.3f %7.3f   %d   # [%d]\n",
                 c.x, c.y, c.z, b.h.x, b.h.y, b.h.z, b.kind, i);
     }
@@ -131,6 +134,10 @@ static void WriteLevel(const Level& l, FILE* f) {
     fprintf(f, "\n# crumble  boxIndex  delay  respawn   (乗ってから落ちるまで / 戻るまで。0 は既定値)\n");
     for (const Crumble& c : l.crumbles)
         fprintf(f, "crumble  %d   %6.3f  %6.3f\n", c.boxIndex, c.delay, c.respawn);
+
+    fprintf(f, "\n# crate  boxIndex  size   (積み木。崩して足場にする。位置と大きさは box 側)\n");
+    for (const Crate& c : l.crates)
+        fprintf(f, "crate  %d   %6.3f\n", c.boxIndex, c.size);
 
     fprintf(f, "\n# slide  radius exitBoost sub  n   x y z  x y z ...   (制御点だけ。中心線は読込時に生成)\n");
     for (const WaterSlide& s : l.slides) {
@@ -312,6 +319,14 @@ static bool ApplyLevelLine(Level& l, char* line, int lineNo) {
         l.crumbles.push_back(c);
         return true;
     }
+    if (strcmp(key, "crate") == 0) {
+        if (!need(1)) return false;
+        Crate c;
+        c.boxIndex = (int)v[0];
+        c.size     = (n >= 2 && v[1] > 0.05f) ? v[1] : 0.55f;
+        l.crates.push_back(c);
+        return true;
+    }
     if (strcmp(key, "slide") == 0) {
         if (!need(4)) return false;
         WaterSlide s;
@@ -391,6 +406,17 @@ static void FixupLevel(Level& l) {
         if (b.gateBoxIndex < 0 || b.gateBoxIndex >= nb) { b.gateBoxIndex = -1; continue; }
         l.boxes[b.gateBoxIndex].c = b.gateClosed;
     }
+    for (int i = (int)l.crates.size() - 1; i >= 0; --i) {
+        Crate& c = l.crates[i];
+        if (c.boxIndex < 0 || c.boxIndex >= nb) { l.crates.erase(l.crates.begin() + i); continue; }
+        Box& b = l.boxes[c.boxIndex];
+        b.kind = BOX_CRATE;
+        b.h    = Vector3{c.size, c.size, c.size};   // 立方体に揃える
+        c.home = b.c;
+        c.rot  = Quaternion{0, 0, 0, 1};
+        c.settled = true;
+    }
+
     for (WireAnchor& a : l.anchors)
         if (a.boxIndex < 0 || a.boxIndex >= nb) a.boxIndex = -1;
 

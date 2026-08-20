@@ -42,7 +42,12 @@ JPH_SUPPRESS_WARNINGS
 namespace Layers {
 static constexpr JPH::ObjectLayer NON_MOVING = 0;
 static constexpr JPH::ObjectLayer MOVING     = 1;
-static constexpr JPH::ObjectLayer NUM_LAYERS = 2;
+// 積み木を独立した層にしている理由：
+// 主人公は kinematic なので、当たると無限の力で押してしまう。同じ層に入れると
+// 歩くだけで積み木の壁を押し進めて通り抜けられてしまった（実際そうなった）。
+// 積み木を動かす手段は「殴る・ダッシュ」に限りたいので、体では触れないようにする。
+static constexpr JPH::ObjectLayer CRATE      = 2;
+static constexpr JPH::ObjectLayer NUM_LAYERS = 3;
 }
 namespace BPLayers {
 static constexpr JPH::BroadPhaseLayer NON_MOVING(0);
@@ -53,7 +58,9 @@ static constexpr JPH::uint NUM_LAYERS(2);
 class ObjectLayerPairFilterImpl final : public JPH::ObjectLayerPairFilter {
 public:
     bool ShouldCollide(JPH::ObjectLayer a, JPH::ObjectLayer b) const override {
-        if (a == Layers::NON_MOVING) return b == Layers::MOVING;
+        if (a == Layers::NON_MOVING) return b != Layers::NON_MOVING;
+        if (a == Layers::CRATE)      return b != Layers::MOVING;   // 体では押せない
+        if (b == Layers::CRATE)      return a != Layers::MOVING;
         return true;
     }
 };
@@ -63,6 +70,7 @@ public:
     BPLayerInterfaceImpl() {
         mMap[Layers::NON_MOVING] = BPLayers::NON_MOVING;
         mMap[Layers::MOVING]     = BPLayers::MOVING;
+        mMap[Layers::CRATE]      = BPLayers::MOVING;
     }
     JPH::uint GetNumBroadPhaseLayers() const override { return BPLayers::NUM_LAYERS; }
     JPH::BroadPhaseLayer GetBroadPhaseLayer(JPH::ObjectLayer l) const override { return mMap[l]; }
@@ -160,15 +168,28 @@ static void AddBoxBody(Game& g, int i) {
     // 動く床・ゲート・崩れる床だけ kinematic。破片が床に乗って一緒に運ばれる。
     // ここに入れ忘れると、位置を動かした瞬間に MoveKinematic が静的な body を
     // 触って落ちる。「動かす箱は必ず kinematic」がこの関数の約束。
+    // 積み木だけは dynamic ＝ Jolt が位置を決め、こちらが読み戻す側になる。
     bool moves = (b.kind == BOX_MOVING || b.kind == BOX_GATE || b.kind == BOX_CRUMBLE);
+    bool dyn   = (b.kind == BOX_CRATE);
     JPH::BodyCreationSettings bcs(res.Get(), ToJ(b.c), JPH::Quat::sIdentity(),
-                                  moves ? JPH::EMotionType::Kinematic : JPH::EMotionType::Static,
-                                  Layers::NON_MOVING);
-    bcs.mFriction    = 0.6f;
-    bcs.mRestitution = 0.1f;
+                                  dyn   ? JPH::EMotionType::Dynamic
+                                        : (moves ? JPH::EMotionType::Kinematic
+                                                 : JPH::EMotionType::Static),
+                                  dyn ? Layers::CRATE : Layers::NON_MOVING);
+    bcs.mFriction    = dyn ? 0.55f : 0.6f;
+    bcs.mRestitution = dyn ? 0.05f : 0.1f;
+    if (dyn) {
+        // 密度任せだと数百kgになって殴っても動かない。押して動く重さに決め打つ。
+        bcs.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
+        bcs.mMassPropertiesOverride.mMass = 26.0f;
+        bcs.mLinearDamping  = 0.15f;
+        bcs.mAngularDamping = 0.35f;
+    }
     JPH::Body* body = sSystem->GetBodyInterface().CreateBody(bcs);
     if (!body) return;
-    sSystem->GetBodyInterface().AddBody(body->GetID(), JPH::EActivation::DontActivate);
+    sSystem->GetBodyInterface().AddBody(
+        body->GetID(),
+        (b.kind == BOX_CRATE) ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
     sBoxBodies[i]  = body->GetID();
     sBoxCenters[i] = b.c;
     sBoxSolid[i]   = b.solid ? 1 : 0;
@@ -202,7 +223,9 @@ void ResetWorldPhysics(Game& g) {
     sBoxSolid.assign(n, 0);
     for (size_t i = 0; i < n; ++i) {
         const Box& b = g.level.boxes[i];
-        if (b.kind == BOX_SCENERY || !b.solid) continue;
+        if (b.kind == BOX_SCENERY) continue;
+        // 積み木は solid を落としている間も Jolt の中では動き続ける必要がある
+        if (!b.solid && b.kind != BOX_CRATE) continue;
         AddBoxBody(g, (int)i);
     }
 
@@ -311,6 +334,8 @@ void UpdateWorldPhysics(Game& g, float dt) {
     for (size_t i = 0; i < g.level.boxes.size(); ++i) {
         const Box& b = g.level.boxes[i];
         if (b.kind == BOX_SCENERY) continue;
+        // 積み木は Jolt 側が位置の持ち主。こちらから動かしたり消したりしない。
+        if (b.kind == BOX_CRATE) continue;
         bool wantBody = b.solid;
         bool hasBody  = !sBoxBodies[i].IsInvalid();
         if (wantBody && !hasBody) { AddBoxBody(g, (int)i); continue; }
@@ -365,11 +390,85 @@ void UpdateWorldPhysics(Game& g, float dt) {
         ++i;
     }
 
+    // ── 積み木を読み戻す。ここが「物理 → 遊び」に情報が流れる唯一の場所。
+    for (Crate& cr : g.level.crates) {
+        if (cr.boxIndex < 0 || cr.boxIndex >= (int)g.level.boxes.size()) continue;
+        JPH::BodyID id = sBoxBodies[cr.boxIndex];
+        if (id.IsInvalid()) continue;
+        Box& box = g.level.boxes[cr.boxIndex];
+
+        JPH::RVec3 p;
+        JPH::Quat  q;
+        bi.GetPositionAndRotation(id, p, q);
+
+        // 落ちすぎたら置いた場所へ戻す（詰みを作らないため）
+        if (ToR(p).y < -25.0f) {
+            bi.SetPositionAndRotation(id, ToJ(cr.home), JPH::Quat::sIdentity(),
+                                      JPH::EActivation::Activate);
+            bi.SetLinearVelocity(id, JPH::Vec3::sZero());
+            bi.SetAngularVelocity(id, JPH::Vec3::sZero());
+            p = ToJ(cr.home);
+            q = JPH::Quat::sIdentity();
+        }
+
+        bool  active = bi.IsActive(id);
+        float speed  = bi.GetLinearVelocity(id).Length();
+
+        // 「乗れる／ぶつかる」かどうかは、速さではなく傾きで決める。
+        // 速さで切ると、押した瞬間に当たり判定が消えて壁をすり抜けてしまう
+        // （実際そうなっていた）。押されて滑っている箱は、立っている限り壁のまま。
+        // 大きく傾いた箱だけ、AABB と形が合わないので当たらないことにする。
+        Quaternion qq{q.GetX(), q.GetY(), q.GetZ(), q.GetW()};
+        Vector3 up = Vector3RotateByQuaternion(Vector3{0, 1, 0}, qq);
+        bool upright = (fabsf(up.y) > 0.93f);
+
+        box.c    = ToR(p);
+        cr.rot   = Quaternion{q.GetX(), q.GetY(), q.GetZ(), q.GetW()};
+        cr.flash = fmaxf(0.0f, cr.flash - dt * 3.0f);
+
+        // 静まったら軸に揃える。立方体なので見た目は変わらず、AABB とのズレだけ消える。
+        if (!active) {
+            // 眠ったら軸に揃える。転がって斜めのまま止まると AABB と噛み合わず、
+            // 「崩した山に乗れない」ことになってしまう（実際そうなった）。
+            if (fabsf(qq.x) + fabsf(qq.y) + fabsf(qq.z) > 0.002f) {
+                bi.SetPositionAndRotation(id, p, JPH::Quat::sIdentity(),
+                                          JPH::EActivation::DontActivate);
+                cr.rot   = Quaternion{0, 0, 0, 1};
+                upright  = true;
+            }
+            cr.settled = true;
+        } else {
+            cr.settled = (speed < 0.6f);
+        }
+        // 立っていれば足場・壁として有効。転がっている最中と、勢いよく飛んでいる間だけ外す。
+        box.solid = upright && (speed < 8.0f);
+        sBoxCenters[cr.boxIndex] = box.c;
+    }
+
     // ── 接触を Event に変換する。物理が演出へ出ていく唯一の口。
     for (const Impact& im : sImpacts) {
         int v = (int)(im.speed * 10.0f);
         PushEvent(g, GameEventType::DebrisImpact, im.pos, 0, v);
     }
+}
+
+// 積み木を突き飛ばす。パンチ・ダッシュ・踏みつけから interaction.cpp 経由で呼ばれる。
+void PushCrate(Game& g, int crateIndex, Vector3 dir, float power) {
+    if (!sSystem) return;
+    if (crateIndex < 0 || crateIndex >= (int)g.level.crates.size()) return;
+    Crate& cr = g.level.crates[crateIndex];
+    if (cr.boxIndex < 0 || cr.boxIndex >= (int)sBoxBodies.size()) return;
+    JPH::BodyID id = sBoxBodies[cr.boxIndex];
+    if (id.IsInvalid()) return;
+
+    JPH::BodyInterface& bi = sSystem->GetBodyInterface();
+    Vector3 d = Vector3Normalize(Vector3{dir.x, dir.y * 0.35f + 0.30f, dir.z});
+    bi.AddImpulse(id, JPH::Vec3(d.x * power, d.y * power, d.z * power));
+    // 少しひねりを入れる。まっすぐ飛ぶより崩れ方が散らばって気持ちいい。
+    bi.AddAngularImpulse(id, JPH::Vec3(d.z * power * 0.05f, 0.0f, -d.x * power * 0.05f));
+    bi.ActivateBody(id);
+    cr.settled = false;
+    cr.flash   = 1.0f;
 }
 
 // ══════════════════════════════════════════════ 描画

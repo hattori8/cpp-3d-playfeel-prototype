@@ -283,6 +283,107 @@ int RunSelfTest(Game& g) {
     CHECK("surprise opens the way", g.player.pos.x < -16.0f,
           TextFormat("x=%.1f", g.player.pos.x));
 
+    // ── 30.5 積み木：物理の結果が足場になる
+    //
+    // ここは DESIGN.md 11.5 の例外。物理がゲームプレイに関わることを許した箇所なので、
+    // 「関わり方」を数値で固定しておく。壊れない・消えない・必ず静止する、が前提。
+    {
+        BuildLevel(g);
+        // スタート広場の前にタワーを積む（4段）
+        int base = (int)g.level.boxes.size();
+        for (int k = 0; k < 4; ++k) {
+            float sz = 0.55f;
+            Vector3 home{0.0f, 0.55f + k * 1.12f, 5.0f};
+            g.level.boxes.push_back(Box{home, Vector3{sz, sz, sz}, BOX_CRATE, true});
+            Crate c;
+            c.boxIndex = (int)g.level.boxes.size() - 1;
+            c.home = home;
+            c.size = sz;
+            g.level.crates.push_back(c);
+        }
+        ResetWorldPhysics(g);
+        PlacePlayer(g, {0, 1.2f, 0}, true);
+
+        // 積んだ直後は自重で少し沈むが、すぐ静まって「乗れる」状態になる
+        Sim(g, 2.5f, SimCfg{});
+        bool allSettled = true;
+        for (const Crate& c : g.level.crates)
+            if (!c.settled || !g.level.boxes[c.boxIndex].solid) allSettled = false;
+        INTENT("crates settle", allSettled,
+               TextFormat("n=%d topY=%.2f", (int)g.level.crates.size(),
+                          g.level.boxes[g.level.crates.back().boxIndex].c.y));
+
+        // 静まった積み木は軸に揃っている（AABB とのズレが残らない）
+        float tilt = fabsf(g.level.crates[0].rot.x) + fabsf(g.level.crates[0].rot.y)
+                   + fabsf(g.level.crates[0].rot.z);
+        INTENT("settled crate is axis aligned", tilt < 0.01f, TextFormat("tilt=%.4f", tilt));
+
+        // 殴ると崩れる（土台を抜けば上も落ちる）
+        float beforeTop = g.level.boxes[g.level.crates.back().boxIndex].c.y;
+        PlacePlayer(g, {0, 1.2f, 3.4f}, true);
+        Sim(g, 0.45f, SimCfg{{0, 1}, 0.0f, false, 0.2f});
+        Sim(g, 2.5f, SimCfg{});
+        float afterTop = g.level.boxes[g.level.crates.back().boxIndex].c.y;
+        INTENT("punch topples the tower", afterTop < beforeTop - 0.5f,
+               TextFormat("top %.2f -> %.2f", beforeTop, afterTop));
+
+        // 崩れた後も全部残っていて、静まって足場になる（壊れない・消えない）
+        Sim(g, 4.0f, SimCfg{});
+        int solidCount = 0;
+        for (const Crate& c : g.level.crates)
+            if (c.settled && g.level.boxes[c.boxIndex].solid) solidCount++;
+        INTENT("rubble becomes footing", solidCount == (int)g.level.crates.size(),
+               TextFormat("solid=%d/%d", solidCount, (int)g.level.crates.size()));
+
+        // 置いただけで崩れない（塞ぐ役をさせる以上、これが成り立たないと設計が壊れる）
+        {
+            BuildLevel(g);
+            int first = (int)g.level.boxes.size();
+            for (int col = 0; col < 3; ++col) {
+                for (int row = 0; row < 3; ++row) {
+                    float sz = 0.55f;
+                    Vector3 home{-1.15f + col * 1.15f, 1.65f + row * 1.12f, 27.0f};
+                    g.level.boxes.push_back(Box{home, Vector3{sz, sz, sz}, BOX_CRATE, true});
+                    Crate c; c.boxIndex = (int)g.level.boxes.size() - 1; c.home = home; c.size = sz;
+                    g.level.crates.push_back(c);
+                }
+            }
+            ResetWorldPhysics(g);
+            PlacePlayer(g, {0, 1.2f, 0}, true);
+            Sim(g, 8.0f, SimCfg{});
+            float worst = 0.0f;
+            for (const Crate& c : g.level.crates)
+                worst = fmaxf(worst, Vector3Distance(g.level.boxes[c.boxIndex].c, c.home));
+            INTENT("crate wall stands still", worst < 0.25f,
+                   TextFormat("worst drift=%.3fm n=%d", worst, (int)g.level.crates.size()));
+
+            // 押しただけでは通れない。殴って崩してから通る、が成立する条件。
+            PlacePlayer(g, {0, 1.7f, 24.5f}, true);
+            Sim(g, 3.0f, SimCfg{{0, 1}});
+            INTENT("crate wall blocks walking", g.player.pos.z < 26.6f,
+                   TextFormat("z=%.2f", g.player.pos.z));
+
+            // 殴れば崩れて通れるようになる
+            PlacePlayer(g, {0, 1.7f, 25.4f}, true);
+            for (int k = 0; k < 8; ++k) Sim(g, 0.4f, SimCfg{{0, 1}, 0.0f, false, 0.15f});
+            Sim(g, 2.0f, SimCfg{});
+            Sim(g, 3.0f, SimCfg{{0, 1}});
+            INTENT("punching opens the way", g.player.pos.z > 27.6f,
+                   TextFormat("z=%.2f", g.player.pos.z));
+            (void)first;
+        }
+
+        // 場外へ落ちたら置いた場所へ戻る（詰みを作らない）
+        {
+            Crate& c = g.level.crates[0];
+            PushCrate(g, 0, Vector3{1, 0, 0}, 4000.0f);
+            Sim(g, 8.0f, SimCfg{});
+            float d = Vector3Distance(g.level.boxes[c.boxIndex].c, c.home);
+            CHECK("lost crate returns", d < 6.0f,
+                  TextFormat("dist=%.2f y=%.2f", d, g.level.boxes[c.boxIndex].c.y));
+        }
+    }
+
     // ── 31. 掴んでいない時に撃っても何も起きない（誤爆しない）
     BuildLevel(g); GrantAbility(g, AbilityType::Wire);
     PlacePlayer(g, {0, 1.2f, 0}, true);

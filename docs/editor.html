@@ -390,6 +390,24 @@ checkpoint     0.000    2.200   32.000
 checkpoint     0.000    2.500   44.500
 checkpoint     0.000    2.000   58.000
 
+bot     13.500    5.100   22.000
+coin    13.500    5.300   21.200
+coin    13.500    5.300   22.800
+
+# crate  boxIndex  size   (積み木。崩して足場にする。位置と大きさは box 側)
+crate  53    0.550
+crate  54    0.550
+crate  55    0.550
+crate  56    0.550
+crate  57    0.550
+crate  58    0.550
+crate  59    0.550
+crate  60    0.550
+crate  61    0.550
+crate  62    0.550
+crate  63    0.550
+crate  64    0.550
+
 goal     0.000    9.050   62.000
 
 # ── 崩れる床の橋（高台の右から、止まらずに渡る短い寄り道）
@@ -398,6 +416,20 @@ box    12.500    0.850   26.500     1.300   0.250   1.300   6
 box    15.000    0.850   26.500     1.300   0.250   1.300   6
 box    17.500    0.850   26.500     1.300   0.250   1.300   6
 box    20.500    0.850   26.500     1.800   0.250   1.800   0
+# --- 積み木タワー（崩して足場にする） ---
+box     9.500    1.650   22.000     0.550   0.550   0.550   7   # [53]
+box     9.500    2.760   22.000     0.550   0.550   0.550   7   # [54]
+box     9.500    3.870   22.000     0.550   0.550   0.550   7   # [55]
+box     9.500    4.980   22.000     0.550   0.550   0.550   7   # [56]
+box    10.650    1.650   22.000     0.550   0.550   0.550   7   # [57]
+box    10.650    2.760   22.000     0.550   0.550   0.550   7   # [58]
+box    10.650    3.870   22.000     0.550   0.550   0.550   7   # [59]
+box    10.650    4.980   22.000     0.550   0.550   0.550   7   # [60]
+box    11.800    1.650   22.000     0.550   0.550   0.550   7   # [61]
+box    11.800    2.760   22.000     0.550   0.550   0.550   7   # [62]
+box    11.800    3.870   22.000     0.550   0.550   0.550   7   # [63]
+box    11.800    4.980   22.000     0.550   0.550   0.550   7   # [64]
+box    13.500    4.600   22.000     1.800   0.300   1.800   4   # [65]
 
 crumble  48    0.500   2.500
 crumble  49    0.500   2.500
@@ -409,7 +441,6 @@ coin    12.500    1.900   26.500
 coin    15.000    1.900   26.500
 coin    17.500    1.900   26.500
 bot    20.500    1.900   26.500
-
 `;
 
 const TYPES = [
@@ -421,6 +452,7 @@ const TYPES = [
   { key: 'springs',     name: 'バネ',          color: 0xff8f4a },
   { key: 'buttons',     name: 'ボタン+ゲート', color: 0x6ed2be },
   { key: 'crumbles',    name: '崩れる床',      color: 0xdea698 },
+  { key: 'crates',      name: '積み木',        color: 0xc69e60 },
   { key: 'slides',      name: 'スライダー',    color: 0x96ebff },
   { key: 'anchors',     name: 'アンカー',      color: 0xc8e6ff },
   { key: 'enemies',     name: '敵',            color: 0xd278ff },
@@ -437,6 +469,7 @@ const BOX_KINDS = [
   { v: 4, n: 'サブパス (SUBPATH)', c: 0xc8afe1 },
   { v: 5, n: 'ゲート (GATE)',    c: 0x6ed2be },
   { v: 6, n: '崩れる床 (CRUMBLE)', c: 0xdea698 },
+  { v: 7, n: '積み木 (CRATE)',    c: 0xc69e60 },
   { v: 9, n: '遠景 (SCENERY)',   c: 0x96acc4 },
 ];
 const ABILITIES = ['None', 'Dash', 'Wire', 'Rocket', 'Mouse', 'Sponge', 'Monkey'];
@@ -444,7 +477,7 @@ const ABILITIES = ['None', 'Dash', 'Wire', 'Rocket', 'Mouse', 'Sponge', 'Monkey'
 function emptyLevel() {
   return {
     boxes: [], platforms: [], coins: [], bots: [], targets: [], springs: [],
-    buttons: [], crumbles: [], slides: [], anchors: [], enemies: [], pickups: [],
+    buttons: [], crumbles: [], crates: [], slides: [], anchors: [], enemies: [], pickups: [],
     checkpoints: [{ x: 0, y: 1.2, z: 0 }], goal: { x: 0, y: 0, z: 0 },
   };
 }
@@ -506,6 +539,9 @@ function parseLevel(text) {
           home: V(0, 0, 0),
         });
         break;
+      case 'crate':
+        if (need(1)) l.crates.push({ boxIndex: v[0] | 0, size: (v.length >= 2 && v[1] > 0.05) ? v[1] : 0.55 });
+        break;
       case 'slide': {
         if (!need(4)) break;
         const cnt = v[3] | 0;
@@ -543,6 +579,13 @@ function parseLevel(text) {
     if (b.gateBoxIndex < 0 || b.gateBoxIndex >= nb) b.gateBoxIndex = -1;
     else l.boxes[b.gateBoxIndex].c = clone(b.gateClosed);
   });
+  l.crates = l.crates.filter(c => c.boxIndex >= 0 && c.boxIndex < nb);
+  l.crates.forEach(c => {
+    const b = l.boxes[c.boxIndex];
+    b.kind = 7;
+    b.h = V(c.size, c.size, c.size);   // 立方体に揃える
+    c.home = clone(b.c);
+  });
   l.anchors.forEach(a => { if (a.boxIndex < 0 || a.boxIndex >= nb) a.boxIndex = -1; });
   l.crumbles.forEach(c => { if (c.boxIndex < 0 || c.boxIndex >= nb) c.boxIndex = -1; });
   l.crumbles = l.crumbles.filter(c => c.boxIndex >= 0);
@@ -570,6 +613,7 @@ function serializeLevel(l) {
     l.platforms.forEach(p => { if (p.boxIndex === i) c = p.a; });
     l.buttons.forEach(bt => { if (bt.gateBoxIndex === i) c = bt.gateClosed; });
     l.crumbles.forEach(cr => { if (cr.boxIndex === i) c = cr.home; });
+    l.crates.forEach(cb => { if (cb.boxIndex === i) c = cb.home; });
     o.push('box  ' + p3(c) + '   ' + h3(b.h) + '   ' + (b.kind | 0) + '   # [' + i + ']');
   });
 
@@ -593,6 +637,9 @@ function serializeLevel(l) {
 
   o.push('', '# crumble  boxIndex  delay  respawn   (乗ってから落ちるまで / 戻るまで。0 は既定値)');
   l.crumbles.forEach(c => o.push('crumble  ' + c.boxIndex + '   ' + f6(c.delay) + '  ' + f6(c.respawn)));
+
+  o.push('', '# crate  boxIndex  size   (積み木。崩して足場にする。位置と大きさは box 側)');
+  l.crates.forEach(c => o.push('crate  ' + c.boxIndex + '   ' + f6(c.size)));
 
   o.push('', '# slide  radius exitBoost sub  n   x y z  x y z ...   (制御点だけ。中心線は読込時に生成)');
   l.slides.forEach(s => {
@@ -640,6 +687,7 @@ function getPos(s) {
     case 'springs':     return l.springs[i].pos;
     case 'buttons':     return part === 1 ? l.buttons[i].gateClosed : part === 2 ? l.buttons[i].gateOpen : l.buttons[i].pos;
     case 'crumbles':    return l.crumbles[i].home;
+    case 'crates':      return l.crates[i].home;
     case 'slides':      return part >= 1 ? l.slides[i].ctrl[part - 1] : l.slides[i].ctrl[0];
     case 'anchors':     return l.anchors[i].pos;
     case 'enemies':     return part === 2 ? l.enemies[i].b : l.enemies[i].a;
@@ -661,6 +709,7 @@ function moveBoxAndOwners(bi, d) {
   l.buttons.forEach(b => { if (b.gateBoxIndex === bi) { addTo(b.gateClosed, d); addTo(b.gateOpen, d); } });
   l.anchors.forEach(a => { if (a.boxIndex === bi) addTo(a.pos, d); });
   l.crumbles.forEach(c => { if (c.boxIndex === bi) addTo(c.home, d); });
+  l.crates.forEach(c => { if (c.boxIndex === bi) addTo(c.home, d); });
 }
 
 function translate(s, d) {
@@ -686,6 +735,12 @@ function translate(s, d) {
                              if (b.gateBoxIndex >= 0) l.boxes[b.gateBoxIndex].c = clone(b.gateClosed); }
       else if (part === 2) { addTo(b.gateOpen, d); }
       else                 { addTo(b.pos, d); }
+      break;
+    }
+    case 'crates': {
+      const c = l.crates[i];
+      addTo(c.home, d);
+      if (c.boxIndex >= 0) l.boxes[c.boxIndex].c = clone(c.home);
       break;
     }
     case 'crumbles': {
@@ -730,6 +785,8 @@ function removeBoxAt(idx) {
   l.anchors.forEach(a => { if (a.boxIndex === idx) { a.boxIndex = -1; a.kind = 0; } else if (a.boxIndex > idx) a.boxIndex--; });
   l.crumbles = l.crumbles.filter(c => c.boxIndex !== idx);
   l.crumbles.forEach(c => { if (c.boxIndex > idx) c.boxIndex--; });
+  l.crates = l.crates.filter(c => c.boxIndex !== idx);
+  l.crates.forEach(c => { if (c.boxIndex > idx) c.boxIndex--; });
 }
 
 function removeSel() {
@@ -742,6 +799,7 @@ function removeSel() {
   else if (t === 'platforms') { const bi = l.platforms[i].boxIndex; l.platforms.splice(i, 1); if (bi >= 0) removeBoxAt(bi); }
   else if (t === 'buttons')   { const bi = l.buttons[i].gateBoxIndex; l.buttons.splice(i, 1); if (bi >= 0) removeBoxAt(bi); }
   else if (t === 'crumbles')  { const bi = l.crumbles[i].boxIndex; l.crumbles.splice(i, 1); if (bi >= 0) removeBoxAt(bi); }
+  else if (t === 'crates')    { const bi = l.crates[i].boxIndex; l.crates.splice(i, 1); if (bi >= 0) removeBoxAt(bi); }
   else l[t].splice(i, 1);
   sel = null;
   changed();
@@ -761,6 +819,11 @@ function duplicateSel() {
     const b = clone(l.buttons[i]);
     if (b.gateBoxIndex >= 0) { l.boxes.push(clone(l.boxes[b.gateBoxIndex])); b.gateBoxIndex = l.boxes.length - 1; }
     l.buttons.push(b); ni = l.buttons.length - 1;
+  } else if (t === 'crates') {
+    const c = clone(l.crates[i]);
+    l.boxes.push(clone(l.boxes[c.boxIndex]));
+    c.boxIndex = l.boxes.length - 1;
+    l.crates.push(c); ni = l.crates.length - 1;
   } else if (t === 'crumbles') {
     const c = clone(l.crumbles[i]);
     if (c.boxIndex >= 0) { l.boxes.push(clone(l.boxes[c.boxIndex])); c.boxIndex = l.boxes.length - 1; }
@@ -801,6 +864,13 @@ function addAt(t, p) {
       l.buttons.push({ pos: V(p.x, p.y + 0.15, p.z), gateBoxIndex: l.boxes.length - 1,
                        gateClosed: gc, gateOpen: V(gc.x, gc.y - 2.2, gc.z) });
       ni = l.buttons.length - 1; break;
+    }
+    case 'crates': {
+      const sz = 0.55;
+      const home = V(p.x, p.y + sz, p.z);
+      l.boxes.push({ c: clone(home), h: V(sz, sz, sz), kind: 7 });
+      l.crates.push({ boxIndex: l.boxes.length - 1, size: sz, home: home });
+      ni = l.crates.length - 1; break;
     }
     case 'crumbles': {
       const home = V(p.x, p.y + 0.25, p.z);
@@ -1361,6 +1431,17 @@ function buildInspector() {
       box.appendChild(hint);
       break;
     }
+    case 'crates': {
+      const c = l.crates[i];
+      numRow(box, '大きさ', () => c.size, v => {
+        c.size = Math.max(0.15, v);
+        if (c.boxIndex >= 0) l.boxes[c.boxIndex].h = V(c.size, c.size, c.size);
+      }, 0.05);
+      box.insertAdjacentHTML('beforeend',
+        '<p class="hint">殴る・ダッシュで飛びます。崩れて静まった山は足場になります。' +
+        '積むときは同じ大きさで縦に並べてください。</p>');
+      break;
+    }
     case 'crumbles': {
       const c = l.crumbles[i];
       if (c.boxIndex >= 0) halfRow(box, '床の半径', l.boxes[c.boxIndex].h);
@@ -1446,7 +1527,7 @@ function updateHud() {
   $('hud').textContent =
     'box ' + l.boxes.length + '   移動床 ' + l.platforms.length + '   コイン ' + l.coins.length +
     '   ボット ' + l.bots.length + '   ターゲット ' + l.targets.length + '\n' +
-    'バネ ' + l.springs.length + '   ボタン ' + l.buttons.length + '   崩れる床 ' + l.crumbles.length +
+    'バネ ' + l.springs.length + '   ボタン ' + l.buttons.length + '   崩れる床 ' + l.crumbles.length + '   積み木 ' + l.crates.length +
     '   スライダー ' + l.slides.length +
     '   アンカー ' + l.anchors.length + '   敵 ' + l.enemies.length + '\n' +
     '能力 ' + l.pickups.length + '   チェックポイント ' + l.checkpoints.length +

@@ -646,6 +646,7 @@ static Color KindColor(int kind) {
 
 static void DrawTerrain(Game& g) {
     for (const Box& b : g.level.boxes) {
+        if (b.kind == BOX_CRATE) continue;   // 積み木は回転を持つので DrawCrates で描く
         Vector3 size = Vector3Scale(b.h, 2.0f);
         DrawCubeV(b.c, size, KindColor(b.kind));
         if (b.kind == BOX_SCENERY) continue;
@@ -677,6 +678,36 @@ static void DrawTerrain(Game& g) {
             DrawLine3D(Vector3{b.c.x - b.h.x * 0.3f, y, b.c.z + b.h.z * 0.8f},
                        Vector3{b.c.x + b.h.x * 0.2f, y, b.c.z + b.h.z * 0.3f}, crack);
         }
+    }
+}
+
+// 積み木。位置と回転は Jolt から書き戻されたものをそのまま使う。
+static void DrawCrates(Game& g) {
+    for (const Crate& c : g.level.crates) {
+        if (c.boxIndex < 0 || c.boxIndex >= (int)g.level.boxes.size()) continue;
+        const Box& b = g.level.boxes[c.boxIndex];
+        float s = c.size * 2.0f;
+
+        // 動いている間は少し明るくして、「今は乗れない」ことを色でも伝える
+        unsigned char lift = (unsigned char)(c.settled ? 0 : 30);
+        Color body{(unsigned char)(198 + lift), (unsigned char)(158 + lift), 96, 255};
+        if (c.flash > 0.01f) {
+            float k = Sat(c.flash);
+            body = Color{(unsigned char)(198 + 57 * k), (unsigned char)(158 + 77 * k),
+                         (unsigned char)(96 + 120 * k), 255};
+        }
+
+        rlPushMatrix();
+        rlTranslatef(b.c.x, b.c.y, b.c.z);
+        rlMultMatrixf(MatrixToFloat(QuaternionToMatrix(c.rot)));
+        DrawCubeV(Vector3{0, 0, 0}, Vector3{s, s, s}, body);
+        DrawCubeWiresV(Vector3{0, 0, 0}, Vector3{s, s, s}, Color{120, 88, 44, 255});
+        // 木箱らしく帯を2本
+        DrawCubeV(Vector3{0, 0, 0}, Vector3{s * 1.02f, s * 0.16f, s * 1.02f},
+                  Color{150, 112, 58, 255});
+        DrawCubeV(Vector3{0, 0, 0}, Vector3{s * 0.16f, s * 1.02f, s * 1.02f},
+                  Color{150, 112, 58, 255});
+        rlPopMatrix();
     }
 }
 
@@ -904,6 +935,7 @@ static void DrawGoal(Game& g) {
 
 void DrawLevel(Game& g) {
     DrawTerrain(g);
+    DrawCrates(g);
     DrawCollectibles(g);
     DrawGimmicks(g);
     DrawSlides(g);

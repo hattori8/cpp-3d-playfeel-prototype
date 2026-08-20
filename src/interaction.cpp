@@ -36,6 +36,7 @@ const char* ReactionName(ReactionKind r) {
         case ReactionKind::Rescue:   return "Rescue";
         case ReactionKind::Ride:     return "Ride";
         case ReactionKind::Pull:     return "Pull";
+        case ReactionKind::Push:     return "Push";
         default:                     return "None";
     }
 }
@@ -229,6 +230,25 @@ static ReactionKind ReactButton(Game& g, const Interaction& it) {
 
 // ══════════════════════════════════════════════ Reaction: Damage（敵）
 
+// 積み木：殴られたら飛ぶ。壊れない・消えないので、失敗しても山が残るだけで済む。
+// どう飛ぶかは Jolt が決める。ここは「押した」という事実だけを物理へ渡す。
+static ReactionKind ReactCrate(Game& g, const Interaction& it) {
+    int i = IdIndex(it.targetId);
+    if (i < 0 || i >= (int)g.level.crates.size()) return ReactionKind::None;
+
+    float power = it.strength * 26.0f;                  // 質量 26kg に対する力積
+    if (it.type == InteractionType::Stomp)      power *= 0.7f;
+    if (it.type == InteractionType::Laser)      power *= 0.4f;
+    if (it.type == InteractionType::AbilityHit) power *= 1.3f;
+    PushCrate(g, i, it.direction, power);
+
+    const Crate& c = g.level.crates[i];
+    Vector3 pos = (c.boxIndex >= 0 && c.boxIndex < (int)g.level.boxes.size())
+                ? g.level.boxes[c.boxIndex].c : c.home;
+    PushEvent(g, GameEventType::CratePushed, pos, it.sourceId, (int)(it.strength * 10.0f));
+    return ReactionKind::Push;
+}
+
 static ReactionKind ReactEnemy(Game& g, const Interaction& it) {
     int idx = IdIndex(it.targetId);
     if (idx < 0 || idx >= (int)g.level.enemies.size()) return ReactionKind::None;
@@ -306,6 +326,7 @@ void ResolveInteractions(Game& g) {
             case OBJ_ANCHOR: r = ReactAnchor(g, it); break;
             case OBJ_BUTTON: r = ReactButton(g, it); break;
             case OBJ_ENEMY:  r = ReactEnemy(g, it);  break;
+            case OBJ_CRATE:  r = ReactCrate(g, it);  break;
             case OBJ_PICKUP: r = ReactPickup(g, it); break;
             case OBJ_GOAL:   r = ReactGoal(g, it);   break;
             default: break;

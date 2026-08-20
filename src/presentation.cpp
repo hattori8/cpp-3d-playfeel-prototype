@@ -274,6 +274,13 @@ void ApplyEventToPresentation(Game& g, const GameEvent& e) {
             Toast(g, "!?");
             break;
 
+        case GameEventType::CratePushed:
+            SpawnBurst(g, e.position, 10, Color{215, 175, 120, 255}, 5.0f, 0.17f);
+            AddCameraShake(g, p.shakeLand * 0.8f);
+            AddCameraKick(g, 0.010f);
+            // Audio: 木箱がぶつかる音 / Haptics: 短い一発
+            break;
+
         case GameEventType::ButtonActivated:
             SpawnBurst(g, e.position, 16, Color{140, 255, 200, 255}, 5.0f, 0.18f);
             AddCameraShake(g, p.shakeLand * 2.0f);

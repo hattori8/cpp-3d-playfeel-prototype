@@ -29,6 +29,7 @@ enum ObjKind {
     OBJ_ANCHOR,
     OBJ_GOAL,
     OBJ_CRUMBLE,
+    OBJ_CRATE,
 };
 static const int kIdStride = 10000;
 
@@ -50,6 +51,7 @@ enum BoxKind {
     BOX_SUBPATH = 4,   // サブパスの足場
     BOX_GATE    = 5,   // ボタンで開くゲート
     BOX_CRUMBLE = 6,   // 乗ると崩れる床（ひび割れ模様つき）
+    BOX_CRATE   = 7,   // 積み木。位置を Jolt が動かす（崩して足場にする）
     BOX_SCENERY = 9,   // 遠景。当たり判定なし
 };
 
@@ -105,6 +107,25 @@ struct Crumble {
     float   timer = 0.0f;
     int     state = 0;          // 0=待機 1=揺れている 2=落下（復活待ち）
     float   shake = 0.0f;
+};
+
+// ── Gimmick: 積み木
+//
+// ここだけ「物理の結果が遊びに関わる」ことを許している（DESIGN.md 11.5 の例外）。
+// 崩したあとの山を足場にして登る、という遊びのため。
+//
+// 実体は Box として level.boxes に入れてある。プレイヤーの当たり判定は自前 AABB の
+// ままで、位置だけを Jolt から書き戻す。こうすると「乗れる」と「転がる」が両立する。
+//
+// 飛んでいる最中は solid を落とす。回転した箱に AABB で乗ると噛み合わないし、
+// 飛んでいる箱に乗れてしまうのも変なので、静まってから足場になる、と決めている。
+struct Crate {
+    int        boxIndex = -1;
+    float      size     = 0.55f;      // 立方体の半径。回転しても形が変わらないので扱いやすい
+    Vector3    home{0, 0, 0};         // 置いた位置。落ちすぎたらここへ戻す
+    Quaternion rot{0, 0, 0, 1};       // 見た目だけ（当たり判定は軸に沿ったまま）
+    bool       settled  = true;       // 静止した＝乗れる
+    float      flash    = 0.0f;
 };
 
 // ── Gimmick: ボタン（叩くとゲートが開く）
@@ -211,6 +232,7 @@ struct Level {
     std::vector<Spring>         springs;
     std::vector<Button>         buttons;
     std::vector<Crumble>        crumbles;
+    std::vector<Crate>          crates;
     std::vector<WaterSlide>     slides;
     std::vector<WireAnchor>     anchors;
     std::vector<Enemy>          enemies;
@@ -334,7 +356,7 @@ struct InteractionQueue {
 };
 
 // 対象側の反応の種類。ログとデバッグ表示のために名前を持たせている。
-enum class ReactionKind { None, Break, Bounce, Damage, Activate, Rescue, Ride, Pull };
+enum class ReactionKind { None, Break, Bounce, Damage, Activate, Rescue, Ride, Pull, Push };
 
 // ══════════════════════════════════════════════ Event
 //
@@ -358,7 +380,8 @@ enum class GameEventType {
     AbilityGained,
     StageCleared,
     DebrisImpact,      // 破片が強くぶつかった（value = 衝突速度 ×10）
-    CrumbleBroke,      // 崩れる床が抜けた
+    CrumbleBroke,
+    CratePushed,       // 積み木を突き飛ばした（value = 強さ×10）      // 崩れる床が抜けた
 };
 
 struct GameEvent {
@@ -446,6 +469,7 @@ enum EditType {
     ED_CHECKPOINT,
     ED_GOAL,
     ED_CRUMBLE,
+    ED_CRATE,
     ED_TYPE_COUNT,
 };
 
@@ -561,6 +585,8 @@ void Toast(Game& g, const char* msg);
 
 // ── world_physics.cpp（Jolt Physics を使うのはこのファイルだけ）
 void ResetWorldPhysics(Game& g);                  // BuildLevel の最後に呼ぶ
+// 積み木を突き飛ばす。遊び側から物理へ出ていく口はここだけ（interaction.cpp が呼ぶ）
+void PushCrate(Game& g, int crateIndex, Vector3 dir, float power);
 void UpdateWorldPhysics(Game& g, float dt);       // FrameStep の中で固定 dt で回す
 void DrawWorldPhysics(Game& g);
 void SpawnDebrisBurst(Game& g, Vector3 pos, Vector3 dir, int n, float power, Color col);

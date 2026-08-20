@@ -285,6 +285,13 @@ static void PushAttackInteractions(Game& g, InteractionType type, Vector3 center
         if (Vector3Distance(center, e.pos) > radius + e.half.x) continue;
         PushInteraction(g, Interaction{type, PLAYER_ID, MakeId(OBJ_ENEMY, i), e.pos, dir, strength});
     }
+    for (int i = 0; i < (int)g.level.crates.size(); ++i) {
+        const Crate& c = g.level.crates[i];
+        if (c.boxIndex < 0 || c.boxIndex >= (int)g.level.boxes.size()) continue;
+        Vector3 cp = g.level.boxes[c.boxIndex].c;
+        if (Vector3Distance(center, cp) > radius + c.size) continue;
+        PushInteraction(g, Interaction{type, PLAYER_ID, MakeId(OBJ_CRATE, i), cp, dir, strength});
+    }
     for (int i = 0; i < (int)g.level.buttons.size(); ++i) {
         const Button& b = g.level.buttons[i];
         if (Vector3Distance(center, b.pos) > radius + b.half.x) continue;
