@@ -328,6 +328,14 @@ void ApplyEventToPresentation(Game& g, const GameEvent& e) {
             g.clearBanner = 4.0f;
             break;
 
+        case GameEventType::CrumbleBroke:
+            SpawnBurst(g, e.position, 16, Color{222, 166, 152, 255}, 5.0f, 0.22f);
+            SpawnEffect(g, EffectKind::Shockwave, e.position, Vector3{0, 1, 0},
+                        0.35f, 0.4f, 2.2f, Color{200, 140, 125, 200});
+            AddCameraShake(g, p.shakeLand * 0.8f);
+            // Audio: 石が割れて落ちる音 / Haptics: 短い落下感
+            break;
+
         case GameEventType::DebrisImpact: {
             // 破片が強くぶつかった。value = 衝突速度 ×10。
             // 物理の結果を「触った感じ」に変換する唯一の場所で、

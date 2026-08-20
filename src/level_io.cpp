@@ -43,8 +43,11 @@ EM_JS(void, AstroDownloadFile, (const char* pathPtr, const char* namePtr), {
 });
 #endif
 
+// 探す順番。docs/ が原本で、公開版（GitHub Pages）がそのまま配信するのもこれ。
+// 直下の level.txt は、以前の置き場所を使っている場合のための後方互換。
 static const char* kCandidates[] = {
-    "level.txt", "../level.txt", "../../level.txt", "../../../level.txt",
+    "docs/level.txt", "../docs/level.txt", "../../docs/level.txt", "../../../docs/level.txt",
+    "level.txt",      "../level.txt",      "../../level.txt",      "../../../level.txt",
 };
 
 static char      s_path[512] = {0};
@@ -58,6 +61,7 @@ static long long FileMTime(const char* path) {
 
 // params.txt が見つかっているなら、その隣を level.txt の置き場にする。
 // 実行ディレクトリがビルドフォルダでも、ソースツリー側へ保存できるようにするため。
+// どちらも分からないときは docs/level.txt（原本の置き場）に落とす。
 static void DeriveDefaultPath(const Game& g, char* out, size_t n) {
     if (g.paramsPath && g.paramsPath[0]) {
         snprintf(out, n, "%s", g.paramsPath);
@@ -66,7 +70,7 @@ static void DeriveDefaultPath(const Game& g, char* out, size_t n) {
         char* cut = (bslash && (!slash || bslash > slash)) ? bslash : slash;
         if (cut) { cut[1] = '\0'; strncat(out, "level.txt", n - strlen(out) - 1); return; }
     }
-    snprintf(out, n, "level.txt");
+    snprintf(out, n, "docs/level.txt");
 }
 
 // ────────────────────────────────────────────── 書き出し
@@ -78,7 +82,7 @@ static void WriteLevel(const Level& l, FILE* f) {
 
     // ── box（この順番がそのまま添字になる。platform / button / anchor が参照する）
     fprintf(f, "# box  cx cy cz  hx hy hz  kind"
-               "   (0=床 1=段差 2=壁 3=動く床 4=サブパス 5=ゲート 9=遠景)\n");
+               "   (0=床 1=段差 2=壁 3=動く床 4=サブパス 5=ゲート 6=崩れる床 9=遠景)\n");
     for (int i = 0; i < (int)l.boxes.size(); ++i) {
         const Box& b = l.boxes[i];
         Vector3 c = b.c;
@@ -87,6 +91,8 @@ static void WriteLevel(const Level& l, FILE* f) {
             if (pf.boxIndex == i) c = pf.a;
         for (const Button& bt : l.buttons)
             if (bt.gateBoxIndex == i) c = bt.gateClosed;
+        for (const Crumble& cr : l.crumbles)
+            if (cr.boxIndex == i) c = cr.home;
         fprintf(f, "box  %8.3f %8.3f %8.3f   %7.3f %7.3f %7.3f   %d   # [%d]\n",
                 c.x, c.y, c.z, b.h.x, b.h.y, b.h.z, b.kind, i);
     }
@@ -121,6 +127,10 @@ static void WriteLevel(const Level& l, FILE* f) {
                 b.gateClosed.x, b.gateClosed.y, b.gateClosed.z,
                 b.gateOpen.x, b.gateOpen.y, b.gateOpen.z);
     }
+
+    fprintf(f, "\n# crumble  boxIndex  delay  respawn   (乗ってから落ちるまで / 戻るまで。0 は既定値)\n");
+    for (const Crumble& c : l.crumbles)
+        fprintf(f, "crumble  %d   %6.3f  %6.3f\n", c.boxIndex, c.delay, c.respawn);
 
     fprintf(f, "\n# slide  radius exitBoost sub  n   x y z  x y z ...   (制御点だけ。中心線は読込時に生成)\n");
     for (const WaterSlide& s : l.slides) {
@@ -293,6 +303,15 @@ static bool ApplyLevelLine(Level& l, char* line, int lineNo) {
         l.buttons.push_back(b);
         return true;
     }
+    if (strcmp(key, "crumble") == 0) {
+        if (!need(1)) return false;
+        Crumble c;
+        c.boxIndex = (int)v[0];
+        c.delay    = (n >= 2) ? v[1] : 0.55f;
+        c.respawn  = (n >= 3) ? v[2] : 2.50f;
+        l.crumbles.push_back(c);
+        return true;
+    }
     if (strcmp(key, "slide") == 0) {
         if (!need(4)) return false;
         WaterSlide s;
@@ -374,6 +393,16 @@ static void FixupLevel(Level& l) {
     }
     for (WireAnchor& a : l.anchors)
         if (a.boxIndex < 0 || a.boxIndex >= nb) a.boxIndex = -1;
+
+    for (Crumble& c : l.crumbles) {
+        if (c.boxIndex < 0 || c.boxIndex >= nb) { c.boxIndex = -1; continue; }
+        c.home = l.boxes[c.boxIndex].c;
+        l.boxes[c.boxIndex].kind  = BOX_CRUMBLE;
+        l.boxes[c.boxIndex].solid = true;
+    }
+    // 参照先を失った崩れる床は消す（更新側が boxIndex の有効性を前提にしている）
+    for (int i = (int)l.crumbles.size() - 1; i >= 0; --i)
+        if (l.crumbles[i].boxIndex < 0) l.crumbles.erase(l.crumbles.begin() + i);
 
     if (l.checkpoints.empty()) l.checkpoints.push_back(Vector3{0, 1.2f, 0});
 }

@@ -157,8 +157,10 @@ static void AddBoxBody(Game& g, int i) {
     JPH::ShapeSettings::ShapeResult res = shape.Create();
     if (res.HasError()) return;
 
-    // 動く床とゲートだけ kinematic。破片が床に乗って一緒に運ばれる。
-    bool moves = (b.kind == BOX_MOVING || b.kind == BOX_GATE);
+    // 動く床・ゲート・崩れる床だけ kinematic。破片が床に乗って一緒に運ばれる。
+    // ここに入れ忘れると、位置を動かした瞬間に MoveKinematic が静的な body を
+    // 触って落ちる。「動かす箱は必ず kinematic」がこの関数の約束。
+    bool moves = (b.kind == BOX_MOVING || b.kind == BOX_GATE || b.kind == BOX_CRUMBLE);
     JPH::BodyCreationSettings bcs(res.Get(), ToJ(b.c), JPH::Quat::sIdentity(),
                                   moves ? JPH::EMotionType::Kinematic : JPH::EMotionType::Static,
                                   Layers::NON_MOVING);

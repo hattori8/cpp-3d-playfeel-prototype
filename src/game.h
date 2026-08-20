@@ -28,6 +28,7 @@ enum ObjKind {
     OBJ_SLIDE,
     OBJ_ANCHOR,
     OBJ_GOAL,
+    OBJ_CRUMBLE,
 };
 static const int kIdStride = 10000;
 
@@ -48,6 +49,7 @@ enum BoxKind {
     BOX_MOVING  = 3,   // 動く床
     BOX_SUBPATH = 4,   // サブパスの足場
     BOX_GATE    = 5,   // ボタンで開くゲート
+    BOX_CRUMBLE = 6,   // 乗ると崩れる床（ひび割れ模様つき）
     BOX_SCENERY = 9,   // 遠景。当たり判定なし
 };
 
@@ -87,6 +89,22 @@ struct Spring {
     float   power    = 0.0f;   // 0 なら params.springPower を使う
     float   compress = 0.0f;   // 見た目の縮み
     float   cooldown = 0.0f;
+};
+
+// ── Gimmick: 崩れる床
+//
+// 乗ると揺れて、delay 秒で落ちる。respawn 秒たつと元の位置へ戻る。
+// 当たり判定は専用に持たず、足元の Box の solid を落とすだけで表現する。
+// 「立てる床が消える」という結果が欲しいだけなので、これで足りる。
+struct Crumble {
+    int     boxIndex = -1;
+    float   delay    = 0.55f;   // 乗ってから落ち始めるまで（0 なら既定値）
+    float   respawn  = 2.50f;   // 落ちてから戻るまで（0 なら既定値）
+    Vector3 home{0, 0, 0};      // 作者が置いた位置。戻る先でもある
+    Vector3 vel{0, 0, 0};
+    float   timer = 0.0f;
+    int     state = 0;          // 0=待機 1=揺れている 2=落下（復活待ち）
+    float   shake = 0.0f;
 };
 
 // ── Gimmick: ボタン（叩くとゲートが開く）
@@ -192,6 +210,7 @@ struct Level {
     std::vector<Target>         targets;
     std::vector<Spring>         springs;
     std::vector<Button>         buttons;
+    std::vector<Crumble>        crumbles;
     std::vector<WaterSlide>     slides;
     std::vector<WireAnchor>     anchors;
     std::vector<Enemy>          enemies;
@@ -339,6 +358,7 @@ enum class GameEventType {
     AbilityGained,
     StageCleared,
     DebrisImpact,      // 破片が強くぶつかった（value = 衝突速度 ×10）
+    CrumbleBroke,      // 崩れる床が抜けた
 };
 
 struct GameEvent {
@@ -425,6 +445,7 @@ enum EditType {
     ED_PICKUP,
     ED_CHECKPOINT,
     ED_GOAL,
+    ED_CRUMBLE,
     ED_TYPE_COUNT,
 };
 

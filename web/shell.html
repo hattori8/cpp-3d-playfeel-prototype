@@ -208,6 +208,14 @@
     return false;
   }
   function guard(e) { if (shouldBlock(e)) e.preventDefault(); }
+
+  // エディタページに埋め込まれているとき、Esc で「編集に戻る」を伝える。
+  // iframe の中のキーは親に届かないので、こちらから知らせるしかない。
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && window.parent !== window) {
+      window.parent.postMessage({ astro: 'close-playtest' }, location.origin);
+    }
+  }, true);
   window.addEventListener('keydown', guard, { capture: true, passive: false });
   window.addEventListener('keyup',   guard, { capture: true, passive: false });
   // キャンバス上のホイールでページが動かないように

@@ -114,9 +114,9 @@ if(ASTRO_WEB)
     # そのおかげで、レベルを差し替えるのに wasm のリビルドは要らない。
     set(EMBED_FLAGS "")
     foreach(f params.txt level.txt)
-        if(EXISTS "${CMAKE_SOURCE_DIR}/${f}")
-            message(STATUS "embedding ${f}")
-            list(APPEND EMBED_FLAGS "SHELL:--embed-file ${CMAKE_SOURCE_DIR}/${f}@/${f}")
+        if(EXISTS "${CMAKE_SOURCE_DIR}/docs/${f}")
+            message(STATUS "embedding docs/${f}")
+            list(APPEND EMBED_FLAGS "SHELL:--embed-file ${CMAKE_SOURCE_DIR}/docs/${f}@/${f}")
         endif()
     endforeach()
 

@@ -519,6 +519,60 @@ static void UpdateGimmicks(Game& g, float dt) {
     }
 }
 
+// 崩れる床。踏まれたら揺れて、落ちて、しばらくして戻る。
+//
+// 当たり判定は Box.solid を落とすだけ。地形の判定を通る側（player.cpp /
+// AnyOverlapSolid / RaycastDown）は既に solid を見ているので、ここは何も足さない。
+static void UpdateCrumbles(Game& g, float dt) {
+    Level&        l  = g.level;
+    const Player& pl = g.player;
+
+    for (int i = 0; i < (int)l.crumbles.size(); ++i) {
+        Crumble& c = l.crumbles[i];
+        if (c.boxIndex < 0 || c.boxIndex >= (int)l.boxes.size()) continue;
+        Box& b = l.boxes[c.boxIndex];
+
+        if (c.state == 0) {
+            // 足元にあるか。動く床の判定と同じ「少し下げた箱」で見る。
+            if (!pl.grounded || !b.solid) continue;
+            Vector3 probe = pl.pos;
+            probe.y -= 0.08f;
+            if (!BoxOverlap(probe, pl.half, b.c, b.h)) continue;
+            c.state = 1;
+            c.timer = (c.delay > 0.0f) ? c.delay : 0.55f;
+            c.shake = 0.0f;
+        } else if (c.state == 1) {
+            c.timer -= dt;
+            c.shake += dt * 42.0f;
+            // 絵だけでなく判定ごと揺らす。見えている位置と当たる位置をずらさない。
+            b.c.x = c.home.x + sinf(c.shake) * 0.05f;
+            b.c.z = c.home.z + cosf(c.shake * 1.3f) * 0.05f;
+            if (c.timer <= 0.0f) {
+                c.state = 2;
+                c.timer = (c.respawn > 0.0f) ? c.respawn : 2.5f;
+                c.vel   = Vector3{0, -1.5f, 0};
+                b.c     = c.home;
+                b.solid = false;
+                PushEvent(g, GameEventType::CrumbleBroke,
+                          Vector3{c.home.x, c.home.y + b.h.y, c.home.z},
+                          MakeId(OBJ_CRUMBLE, i), 0);
+            }
+        } else {
+            c.timer -= dt;
+            c.vel.y -= 30.0f * dt;
+            b.c = Vector3Add(b.c, Vector3Scale(c.vel, dt));
+            if (c.timer <= 0.0f) {
+                c.state = 0;
+                c.vel   = Vector3{0, 0, 0};
+                c.shake = 0.0f;
+                b.c     = c.home;
+                b.solid = true;
+                SpawnBurst(g, c.home, 10, Color{225, 175, 160, 255}, 4.0f, 0.20f);
+            }
+        }
+    }
+}
+
 static void UpdateAnchors(Game& g, float dt) {
     for (WireAnchor& a : g.level.anchors) {
         a.bob   += dt * 2.2f;
@@ -568,6 +622,7 @@ void UpdateLevel(Game& g, float dt) {
     UpdateTargets(g, dt);
     UpdateCollectibles(g, dt);
     UpdateGimmicks(g, dt);
+    UpdateCrumbles(g, dt);
     UpdateAnchors(g, dt);
     UpdateEnemies(g, dt);
     UpdateParticles(g, dt);
@@ -584,6 +639,7 @@ static Color KindColor(int kind) {
         case BOX_MOVING:  return Color{240, 150,  60, 255};  // 動く床
         case BOX_SUBPATH: return Color{200, 175, 225, 255};  // サブパス
         case BOX_GATE:    return Color{110, 210, 190, 255};  // ゲート
+        case BOX_CRUMBLE: return Color{222, 166, 152, 255};  // 崩れる床
         default:          return Color{150, 172, 196, 255};  // 遠景
     }
 }
@@ -599,6 +655,7 @@ static void DrawTerrain(Game& g) {
                    : (b.kind == BOX_MOVING)  ? Color{255, 240, 200, 255}
                    : (b.kind == BOX_SUBPATH) ? Color{140, 100, 190, 255}
                    : (b.kind == BOX_GATE)    ? Color{40, 120, 110, 255}
+                   : (b.kind == BOX_CRUMBLE) ? Color{130, 70, 60, 255}
                                              : Color{140, 146, 132, 255};
         DrawCubeWiresV(b.c, size, edge);
 
@@ -606,6 +663,19 @@ static void DrawTerrain(Game& g) {
             Vector3 top = Vector3{b.c.x, b.c.y + b.h.y + 0.012f, b.c.z};
             DrawCubeV(top, Vector3{b.h.x * 2.0f * 0.94f, 0.02f, b.h.z * 2.0f * 0.94f},
                       Color{255, 255, 255, 40});
+        }
+
+        // 崩れる床は上面にひびを描く。色だけだと他の足場と見分けがつかないので、
+        // 「割れている」という形で伝える（CEDEC の、色と形で意味を出す話）。
+        if (b.kind == BOX_CRUMBLE) {
+            float y = b.c.y + b.h.y + 0.02f;
+            Color crack{110, 60, 52, 255};
+            DrawLine3D(Vector3{b.c.x - b.h.x * 0.8f, y, b.c.z - b.h.z * 0.5f},
+                       Vector3{b.c.x + b.h.x * 0.2f, y, b.c.z + b.h.z * 0.3f}, crack);
+            DrawLine3D(Vector3{b.c.x + b.h.x * 0.2f, y, b.c.z + b.h.z * 0.3f},
+                       Vector3{b.c.x + b.h.x * 0.8f, y, b.c.z - b.h.z * 0.7f}, crack);
+            DrawLine3D(Vector3{b.c.x - b.h.x * 0.3f, y, b.c.z + b.h.z * 0.8f},
+                       Vector3{b.c.x + b.h.x * 0.2f, y, b.c.z + b.h.z * 0.3f}, crack);
         }
     }
 }

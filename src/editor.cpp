@@ -19,11 +19,11 @@
 
 static const char* kEdTypeName[ED_TYPE_COUNT] = {
     "BOX", "PLATFORM", "COIN", "BOT", "TARGET", "SPRING",
-    "BUTTON", "SLIDE", "ANCHOR", "ENEMY", "PICKUP", "CHECKPOINT", "GOAL",
+    "BUTTON", "SLIDE", "ANCHOR", "ENEMY", "PICKUP", "CHECKPOINT", "GOAL", "CRUMBLE",
 };
 
 static const char* kBoxKindName[10] = {
-    "FLOOR", "STEP", "WALL", "MOVING", "SUBPATH", "GATE", "?", "?", "?", "SCENERY",
+    "FLOOR", "STEP", "WALL", "MOVING", "SUBPATH", "GATE", "CRUMBLE", "?", "?", "SCENERY",
 };
 
 static const char* kPickupName[7] = {
@@ -45,6 +45,7 @@ static int EdCount(const Level& l, int t) {
         case ED_PICKUP:     return (int)l.pickups.size();
         case ED_CHECKPOINT: return (int)l.checkpoints.size();
         case ED_GOAL:       return 1;
+        case ED_CRUMBLE:    return (int)l.crumbles.size();
         default:            return 0;
     }
 }
@@ -100,6 +101,13 @@ static bool EdBounds(const Level& l, int t, int i, Vector3* c, Vector3* h) {
         case ED_PICKUP:     *c = l.pickups[i].pos; *h = Vector3{0.45f, 0.45f, 0.45f}; break;
         case ED_CHECKPOINT: *c = l.checkpoints[i]; *h = Vector3{0.55f, 1.10f, 0.55f}; break;
         case ED_GOAL:       *c = l.goal;           *h = Vector3{0.80f, 0.80f, 0.80f}; break;
+        case ED_CRUMBLE: {
+            int bi = l.crumbles[i].boxIndex;
+            if (bi < 0 || bi >= (int)l.boxes.size()) return false;
+            *c = l.crumbles[i].home;
+            *h = l.boxes[bi].h;
+            break;
+        }
         default: return false;
     }
     return true;
@@ -118,6 +126,7 @@ static Vector3 EdGetPos(const Level& l, int t, int i, int part) {
             if (part == 1) return l.buttons[i].gateClosed;
             if (part == 2) return l.buttons[i].gateOpen;
             return l.buttons[i].pos;
+        case ED_CRUMBLE: return l.crumbles[i].home;
         case ED_SLIDE: {
             const WaterSlide& s = l.slides[i];
             if (s.ctrl.empty()) return Vector3{0, 0, 0};
@@ -150,6 +159,10 @@ static void MoveBoxAndOwners(Level& l, int boxIndex, Vector3 d) {
     for (WireAnchor& a : l.anchors) {
         if (a.boxIndex != boxIndex) continue;
         a.pos = Vector3Add(a.pos, d);
+    }
+    for (Crumble& c : l.crumbles) {
+        if (c.boxIndex != boxIndex) continue;
+        c.home = Vector3Add(c.home, d);
     }
 }
 
@@ -216,6 +229,13 @@ static void EdTranslate(Level& l, int t, int i, int part, Vector3 d) {
             e.pos = Vector3Lerp(e.a, e.b, e.t);
             break;
         }
+        case ED_CRUMBLE: {
+            Crumble& c = l.crumbles[i];
+            c.home = Vector3Add(c.home, d);
+            if (c.boxIndex >= 0 && c.boxIndex < (int)l.boxes.size())
+                l.boxes[c.boxIndex].c = c.home;
+            break;
+        }
         case ED_PICKUP:     l.pickups[i].pos = Vector3Add(l.pickups[i].pos, d);      break;
         case ED_CHECKPOINT: l.checkpoints[i] = Vector3Add(l.checkpoints[i], d);      break;
         case ED_GOAL:       l.goal           = Vector3Add(l.goal, d);                break;
@@ -233,6 +253,8 @@ static Vector3* EdHalfPtr(Level& l, int t, int i) {
                                ? &l.boxes[l.platforms[i].boxIndex].h : nullptr;
         case ED_BUTTON:   return (l.buttons[i].gateBoxIndex >= 0)
                                ? &l.boxes[l.buttons[i].gateBoxIndex].h : nullptr;
+        case ED_CRUMBLE:  return (l.crumbles[i].boxIndex >= 0)
+                               ? &l.boxes[l.crumbles[i].boxIndex].h : nullptr;
         default:          return nullptr;
     }
 }
@@ -282,6 +304,10 @@ static int EdFields(const Level& l, int t, int i, EdField* out, int maxN) {
         case ED_PICKUP:
             put("ability", (float)(int)l.pickups[i].type, 1.0f, 0.0f, 6.0f, true);
             break;
+        case ED_CRUMBLE:
+            put("delay",   l.crumbles[i].delay,   0.05f, 0.05f, 3.0f, false);
+            put("respawn", l.crumbles[i].respawn, 0.25f, 0.25f, 10.0f, false);
+            break;
         default: break;
     }
     return n;
@@ -306,6 +332,10 @@ static void EdSetField(Level& l, int t, int i, int f, float v) {
         case ED_ANCHOR:   if (f == 0) l.anchors[i].kind = (int)v; break;
         case ED_ENEMY:    if (f == 0) l.enemies[i].speed = v; break;
         case ED_PICKUP:   if (f == 0) l.pickups[i].type = (AbilityType)(int)v; break;
+        case ED_CRUMBLE:
+            if (f == 0) l.crumbles[i].delay   = v;
+            if (f == 1) l.crumbles[i].respawn = v;
+            break;
         default: break;
     }
 }
@@ -331,6 +361,11 @@ static void RemoveBoxAt(Level& l, int idx) {
         if (a.boxIndex == idx)     { a.boxIndex = -1; a.kind = ANCHOR_FIXED; }
         else if (a.boxIndex > idx) --a.boxIndex;
     }
+    for (int i = (int)l.crumbles.size() - 1; i >= 0; --i) {
+        int& bi = l.crumbles[i].boxIndex;
+        if (bi == idx)     l.crumbles.erase(l.crumbles.begin() + i);
+        else if (bi > idx) --bi;
+    }
 }
 
 static void EdRemove(Level& l, int t, int i) {
@@ -347,6 +382,12 @@ static void EdRemove(Level& l, int t, int i) {
             int bi = l.buttons[i].gateBoxIndex;
             l.buttons.erase(l.buttons.begin() + i);
             if (bi >= 0) RemoveBoxAt(l, bi);      // ゲートの箱も一緒に消す
+            break;
+        }
+        case ED_CRUMBLE: {
+            int bi = l.crumbles[i].boxIndex;
+            l.crumbles.erase(l.crumbles.begin() + i);
+            if (bi >= 0) RemoveBoxAt(l, bi);      // 床の箱も一緒に消す
             break;
         }
         case ED_COIN:       l.coins.erase(l.coins.begin() + i);             break;
@@ -423,6 +464,16 @@ static int EdAdd(Game& g, int t, Vector3 p) {
             l.buttons.push_back(b);
             return (int)l.buttons.size() - 1;
         }
+        case ED_CRUMBLE: {
+            Vector3 h{1.3f, 0.25f, 1.3f};
+            Vector3 home{p.x, p.y + h.y, p.z};
+            l.boxes.push_back(Box{home, h, BOX_CRUMBLE, true});
+            Crumble c;
+            c.boxIndex = (int)l.boxes.size() - 1;
+            c.home = home;
+            l.crumbles.push_back(c);
+            return (int)l.crumbles.size() - 1;
+        }
         case ED_SLIDE: {
             WaterSlide s;
             s.radius = 1.6f;
@@ -497,6 +548,17 @@ static int EdDuplicate(Game& g, int t, int i) {
             b.openTimer = 0.0f; b.openRatio = 0.0f; b.press = 0.0f;
             l.buttons.push_back(b);
             ni = (int)l.buttons.size() - 1;
+            break;
+        }
+        case ED_CRUMBLE: {
+            Crumble c = l.crumbles[i];
+            if (c.boxIndex >= 0) {
+                l.boxes.push_back(l.boxes[c.boxIndex]);
+                c.boxIndex = (int)l.boxes.size() - 1;
+            }
+            c.state = 0; c.timer = 0.0f; c.shake = 0.0f; c.vel = Vector3{0, 0, 0};
+            l.crumbles.push_back(c);
+            ni = (int)l.crumbles.size() - 1;
             break;
         }
         case ED_COIN:   l.coins.push_back(l.coins[i]);     ni = (int)l.coins.size() - 1;   break;
@@ -737,10 +799,11 @@ void UpdateEditor(Game& g, float rdt) {
         Toast(g, "DELETE");
     }
     if (IsKeyPressed(KEY_B)) {   // 置く箱の種類を切り替える（選択中の箱にも反映）
-        static const int kKinds[] = {BOX_FLOOR, BOX_STEP, BOX_WALL, BOX_SUBPATH, BOX_SCENERY};
+        static const int kKinds[] = {BOX_FLOOR, BOX_STEP, BOX_WALL, BOX_SUBPATH,
+                                     BOX_CRUMBLE, BOX_SCENERY};
         int ki = 0;
-        for (int k = 0; k < 5; ++k) if (kKinds[k] == e.boxKind) ki = k;
-        e.boxKind = kKinds[(ki + 1) % 5];
+        for (int k = 0; k < 6; ++k) if (kKinds[k] == e.boxKind) ki = k;
+        e.boxKind = kKinds[(ki + 1) % 6];
         if (e.type == ED_BOX && e.index >= 0) { l.boxes[e.index].kind = e.boxKind; e.dirty = true; }
         Toast(g, TextFormat("BOX KIND: %s", kBoxKindName[e.boxKind]));
     }
@@ -1008,11 +1071,13 @@ void DrawEditorUI(Game& g) {
 
     // ── 右下：中身の数
     const char* counts = TextFormat("box %d  plat %d  coin %d  bot %d  target %d  spring %d  "
-                                    "button %d  slide %d  anchor %d  enemy %d  pickup %d  cp %d",
+                                    "button %d  crumble %d  slide %d  anchor %d  enemy %d  "
+                                    "pickup %d  cp %d",
                                     (int)l.boxes.size(), (int)l.platforms.size(),
                                     (int)l.coins.size(), (int)l.bots.size(),
                                     (int)l.targets.size(), (int)l.springs.size(),
-                                    (int)l.buttons.size(), (int)l.slides.size(),
+                                    (int)l.buttons.size(), (int)l.crumbles.size(),
+                                    (int)l.slides.size(),
                                     (int)l.anchors.size(), (int)l.enemies.size(),
                                     (int)l.pickups.size(), (int)l.checkpoints.size());
     int w = MeasureText(counts, 16);

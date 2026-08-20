@@ -4,8 +4,11 @@
 #include <cstdlib>
 #include <sys/stat.h>
 
+// level.txt と同じく docs/ を原本にする（公開版がそのまま配信するファイル）。
+// 直下の params.txt は後方互換のために残してある。
 static const char* kCandidates[] = {
-    "params.txt", "../params.txt", "../../params.txt", "../../../params.txt",
+    "docs/params.txt", "../docs/params.txt", "../../docs/params.txt", "../../../docs/params.txt",
+    "params.txt",      "../params.txt",      "../../params.txt",      "../../../params.txt",
 };
 
 static char      s_path[512] = {0};

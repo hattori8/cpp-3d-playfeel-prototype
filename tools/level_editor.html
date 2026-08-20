@@ -85,10 +85,20 @@
   #toast.show { opacity: 1; }
   .kb { background: #262d38; border: 1px solid #3a434f; border-radius: 3px; padding: 0 4px; font-size: 11px; }
   .playlink {
-    color: #ffd76e; font-size: 12.5px; text-decoration: none;
-    border: 1px solid #6b5a24; border-radius: 5px; padding: 5px 10px;
+    color: #8fa3bd; font-size: 12px; text-decoration: none;
+    border: 1px solid #3a434f; border-radius: 5px; padding: 5px 9px;
   }
-  .playlink:hover { background: #2b2517; border-color: #ffd76e; }
+  .playlink:hover { background: #262d38; border-color: #4a90d9; color: #e7ebf2; }
+  .playbtn { background: #6b5a24; border-color: #ffd76e; color: #ffe9ad; font-weight: 600; }
+  .playbtn:hover { background: #85701f; }
+  /* ── 埋め込み試遊。編集画面の上に重ねて、同じページで遊ぶ */
+  #playwrap { position: fixed; inset: 0; z-index: 50; background: #0c0f14;
+              display: none; flex-direction: column; }
+  #playwrap.on { display: flex; }
+  #playbar { display: flex; align-items: center; gap: 10px;
+             padding: 7px 12px; background: #1b1f27; border-bottom: 1px solid #2a313d; }
+  #playbar b { color: #ffd76e; font-size: 13px; }
+  #playframe { flex: 1; width: 100%; border: 0; min-height: 0; }
 </style>
 </head>
 <body>
@@ -100,8 +110,11 @@
   <button id="btnSave" class="primary">level.txt を保存</button>
   <button id="btnDefault">既定レベルに戻す</button>
   <input type="file" id="file" accept=".txt,text/plain" style="display:none">
+  <button id="btnDir">保存先フォルダ…</button>
+  <span class="badge" id="dirLabel">保存先: 未設定（ダウンロード）</span>
   <span class="spacer"></span>
-  <a id="playLink" href="./index.html?level=editor&v=4" class="playlink">▶ このレベルで遊ぶ（デモへ）</a>
+  <button id="btnPlay" class="playbtn">▶ 試遊する</button>
+  <a id="playLink" href="./index.html?level=editor&v=4" target="_blank" class="playlink">別タブで開く</a>
   <span class="badge" id="autosave">自動保存 ON</span>
   <button id="btnUndo">元に戻す (Ctrl+Z)</button>
 </header>
@@ -166,13 +179,25 @@
     <div class="sec">
       <h2>遊びに反映する</h2>
       <p class="hint">
-        編集内容はこのブラウザに自動保存されます。デモのページで
-        「エディタで編集したレベルを読み込む」を押すと、そのまま遊べます。<br><br>
-        リポジトリに入れて公開版の既定レベルにするなら、「level.txt を保存」で
-        書き出したファイルをリポジトリ直下に置いてビルドし直してください。
+        <b>▶ 試遊する</b> … 同じ画面でそのまま遊べます（Esc で編集に戻る）。<br><br>
+        <b>保存先フォルダ…</b> でリポジトリの <code>docs</code> を一度選んでおくと、
+        「level.txt を保存」が <code>docs/level.txt</code> を直接上書きします。
+        あとは commit &amp; push するだけで公開版に反映されます（リビルド不要）。<br><br>
+        デスクトップ版のゲームを起動していれば、保存した瞬間に読み直されます。
       </p>
     </div>
   </div>
+</div>
+
+<div id="playwrap">
+  <div id="playbar">
+    <b>試遊中</b>
+    <span class="hint">編集中のレベルをそのまま遊んでいます。閉じると編集に戻ります。</span>
+    <span style="flex:1"></span>
+    <button id="btnReplay">最新の編集で読み直す</button>
+    <button id="btnClosePlay" class="playbtn">■ 編集に戻る (Esc)</button>
+  </div>
+  <iframe id="playframe" title="astro_proto"></iframe>
 </div>
 
 <!-- three.js r128 (MIT License, https://threejs.org) をそのまま同梱している。
@@ -366,6 +391,25 @@ checkpoint     0.000    2.500   44.500
 checkpoint     0.000    2.000   58.000
 
 goal     0.000    9.050   62.000
+
+# ── 崩れる床の橋（高台の右から、止まらずに渡る短い寄り道）
+box    10.000    0.850   26.500     1.300   0.250   1.300   6
+box    12.500    0.850   26.500     1.300   0.250   1.300   6
+box    15.000    0.850   26.500     1.300   0.250   1.300   6
+box    17.500    0.850   26.500     1.300   0.250   1.300   6
+box    20.500    0.850   26.500     1.800   0.250   1.800   0
+
+crumble  48    0.500   2.500
+crumble  49    0.500   2.500
+crumble  50    0.500   2.500
+crumble  51    0.500   2.500
+
+coin    10.000    1.900   26.500
+coin    12.500    1.900   26.500
+coin    15.000    1.900   26.500
+coin    17.500    1.900   26.500
+bot    20.500    1.900   26.500
+
 `;
 
 const TYPES = [
@@ -376,6 +420,7 @@ const TYPES = [
   { key: 'targets',     name: 'ターゲット',    color: 0x8fd0ff },
   { key: 'springs',     name: 'バネ',          color: 0xff8f4a },
   { key: 'buttons',     name: 'ボタン+ゲート', color: 0x6ed2be },
+  { key: 'crumbles',    name: '崩れる床',      color: 0xdea698 },
   { key: 'slides',      name: 'スライダー',    color: 0x96ebff },
   { key: 'anchors',     name: 'アンカー',      color: 0xc8e6ff },
   { key: 'enemies',     name: '敵',            color: 0xd278ff },
@@ -391,6 +436,7 @@ const BOX_KINDS = [
   { v: 3, n: '動く床 (MOVING)',  c: 0xf0963c },
   { v: 4, n: 'サブパス (SUBPATH)', c: 0xc8afe1 },
   { v: 5, n: 'ゲート (GATE)',    c: 0x6ed2be },
+  { v: 6, n: '崩れる床 (CRUMBLE)', c: 0xdea698 },
   { v: 9, n: '遠景 (SCENERY)',   c: 0x96acc4 },
 ];
 const ABILITIES = ['None', 'Dash', 'Wire', 'Rocket', 'Mouse', 'Sponge', 'Monkey'];
@@ -398,7 +444,7 @@ const ABILITIES = ['None', 'Dash', 'Wire', 'Rocket', 'Mouse', 'Sponge', 'Monkey'
 function emptyLevel() {
   return {
     boxes: [], platforms: [], coins: [], bots: [], targets: [], springs: [],
-    buttons: [], slides: [], anchors: [], enemies: [], pickups: [],
+    buttons: [], crumbles: [], slides: [], anchors: [], enemies: [], pickups: [],
     checkpoints: [{ x: 0, y: 1.2, z: 0 }], goal: { x: 0, y: 0, z: 0 },
   };
 }
@@ -452,6 +498,14 @@ function parseLevel(text) {
           gateClosed: V(v[4], v[5], v[6]), gateOpen: V(v[7], v[8], v[9]),
         });
         break;
+      case 'crumble':
+        if (need(1)) l.crumbles.push({
+          boxIndex: v[0] | 0,
+          delay:   v.length >= 2 ? v[1] : 0.55,
+          respawn: v.length >= 3 ? v[2] : 2.50,
+          home: V(0, 0, 0),
+        });
+        break;
       case 'slide': {
         if (!need(4)) break;
         const cnt = v[3] | 0;
@@ -490,6 +544,9 @@ function parseLevel(text) {
     else l.boxes[b.gateBoxIndex].c = clone(b.gateClosed);
   });
   l.anchors.forEach(a => { if (a.boxIndex < 0 || a.boxIndex >= nb) a.boxIndex = -1; });
+  l.crumbles.forEach(c => { if (c.boxIndex < 0 || c.boxIndex >= nb) c.boxIndex = -1; });
+  l.crumbles = l.crumbles.filter(c => c.boxIndex >= 0);
+  l.crumbles.forEach(c => { c.home = clone(l.boxes[c.boxIndex].c); l.boxes[c.boxIndex].kind = 6; });
   if (!l.checkpoints.length) l.checkpoints.push(V(0, 1.2, 0));
   return { level: l, warn: warn };
 }
@@ -507,11 +564,12 @@ function serializeLevel(l) {
   o.push('# 手で書き換えても構いません。\'#\' 以降はコメント、行の順番は自由です。');
   o.push('version 1', '');
 
-  o.push('# box  cx cy cz  hx hy hz  kind   (0=床 1=段差 2=壁 3=動く床 4=サブパス 5=ゲート 9=遠景)');
+  o.push('# box  cx cy cz  hx hy hz  kind   (0=床 1=段差 2=壁 3=動く床 4=サブパス 5=ゲート 6=崩れる床 9=遠景)');
   l.boxes.forEach((b, i) => {
     let c = b.c;
     l.platforms.forEach(p => { if (p.boxIndex === i) c = p.a; });
     l.buttons.forEach(bt => { if (bt.gateBoxIndex === i) c = bt.gateClosed; });
+    l.crumbles.forEach(cr => { if (cr.boxIndex === i) c = cr.home; });
     o.push('box  ' + p3(c) + '   ' + h3(b.h) + '   ' + (b.kind | 0) + '   # [' + i + ']');
   });
 
@@ -532,6 +590,9 @@ function serializeLevel(l) {
 
   o.push('', '# button  px py pz  gateBoxIndex  closed(x y z)  open(x y z)');
   l.buttons.forEach(b => o.push('button  ' + p3(b.pos) + '   ' + b.gateBoxIndex + '   ' + p3(b.gateClosed) + '   ' + p3(b.gateOpen)));
+
+  o.push('', '# crumble  boxIndex  delay  respawn   (乗ってから落ちるまで / 戻るまで。0 は既定値)');
+  l.crumbles.forEach(c => o.push('crumble  ' + c.boxIndex + '   ' + f6(c.delay) + '  ' + f6(c.respawn)));
 
   o.push('', '# slide  radius exitBoost sub  n   x y z  x y z ...   (制御点だけ。中心線は読込時に生成)');
   l.slides.forEach(s => {
@@ -578,6 +639,7 @@ function getPos(s) {
     case 'targets':     return l.targets[i].pos;
     case 'springs':     return l.springs[i].pos;
     case 'buttons':     return part === 1 ? l.buttons[i].gateClosed : part === 2 ? l.buttons[i].gateOpen : l.buttons[i].pos;
+    case 'crumbles':    return l.crumbles[i].home;
     case 'slides':      return part >= 1 ? l.slides[i].ctrl[part - 1] : l.slides[i].ctrl[0];
     case 'anchors':     return l.anchors[i].pos;
     case 'enemies':     return part === 2 ? l.enemies[i].b : l.enemies[i].a;
@@ -598,6 +660,7 @@ function moveBoxAndOwners(bi, d) {
   l.platforms.forEach(p => { if (p.boxIndex === bi) { addTo(p.a, d); addTo(p.b, d); } });
   l.buttons.forEach(b => { if (b.gateBoxIndex === bi) { addTo(b.gateClosed, d); addTo(b.gateOpen, d); } });
   l.anchors.forEach(a => { if (a.boxIndex === bi) addTo(a.pos, d); });
+  l.crumbles.forEach(c => { if (c.boxIndex === bi) addTo(c.home, d); });
 }
 
 function translate(s, d) {
@@ -623,6 +686,12 @@ function translate(s, d) {
                              if (b.gateBoxIndex >= 0) l.boxes[b.gateBoxIndex].c = clone(b.gateClosed); }
       else if (part === 2) { addTo(b.gateOpen, d); }
       else                 { addTo(b.pos, d); }
+      break;
+    }
+    case 'crumbles': {
+      const c = l.crumbles[i];
+      addTo(c.home, d);
+      if (c.boxIndex >= 0) l.boxes[c.boxIndex].c = clone(c.home);
       break;
     }
     case 'slides': {
@@ -659,6 +728,8 @@ function removeBoxAt(idx) {
   l.platforms.forEach(p => { if (p.boxIndex > idx) p.boxIndex--; });
   l.buttons.forEach(b => { if (b.gateBoxIndex === idx) b.gateBoxIndex = -1; else if (b.gateBoxIndex > idx) b.gateBoxIndex--; });
   l.anchors.forEach(a => { if (a.boxIndex === idx) { a.boxIndex = -1; a.kind = 0; } else if (a.boxIndex > idx) a.boxIndex--; });
+  l.crumbles = l.crumbles.filter(c => c.boxIndex !== idx);
+  l.crumbles.forEach(c => { if (c.boxIndex > idx) c.boxIndex--; });
 }
 
 function removeSel() {
@@ -670,6 +741,7 @@ function removeSel() {
   if (t === 'boxes') removeBoxAt(i);
   else if (t === 'platforms') { const bi = l.platforms[i].boxIndex; l.platforms.splice(i, 1); if (bi >= 0) removeBoxAt(bi); }
   else if (t === 'buttons')   { const bi = l.buttons[i].gateBoxIndex; l.buttons.splice(i, 1); if (bi >= 0) removeBoxAt(bi); }
+  else if (t === 'crumbles')  { const bi = l.crumbles[i].boxIndex; l.crumbles.splice(i, 1); if (bi >= 0) removeBoxAt(bi); }
   else l[t].splice(i, 1);
   sel = null;
   changed();
@@ -689,6 +761,10 @@ function duplicateSel() {
     const b = clone(l.buttons[i]);
     if (b.gateBoxIndex >= 0) { l.boxes.push(clone(l.boxes[b.gateBoxIndex])); b.gateBoxIndex = l.boxes.length - 1; }
     l.buttons.push(b); ni = l.buttons.length - 1;
+  } else if (t === 'crumbles') {
+    const c = clone(l.crumbles[i]);
+    if (c.boxIndex >= 0) { l.boxes.push(clone(l.boxes[c.boxIndex])); c.boxIndex = l.boxes.length - 1; }
+    l.crumbles.push(c); ni = l.crumbles.length - 1;
   } else if (t === 'anchors') {
     const a = clone(l.anchors[i]); a.boxIndex = -1; a.kind = 0;
     l.anchors.push(a); ni = l.anchors.length - 1;
@@ -725,6 +801,12 @@ function addAt(t, p) {
       l.buttons.push({ pos: V(p.x, p.y + 0.15, p.z), gateBoxIndex: l.boxes.length - 1,
                        gateClosed: gc, gateOpen: V(gc.x, gc.y - 2.2, gc.z) });
       ni = l.buttons.length - 1; break;
+    }
+    case 'crumbles': {
+      const home = V(p.x, p.y + 0.25, p.z);
+      l.boxes.push({ c: clone(home), h: V(1.3, 0.25, 1.3), kind: 6 });
+      l.crumbles.push({ boxIndex: l.boxes.length - 1, delay: 0.55, respawn: 2.5, home: home });
+      ni = l.crumbles.length - 1; break;
     }
     case 'slides':
       l.slides.push({ radius: 1.6, exitBoost: 1, sub: 8,
@@ -1279,6 +1361,16 @@ function buildInspector() {
       box.appendChild(hint);
       break;
     }
+    case 'crumbles': {
+      const c = l.crumbles[i];
+      if (c.boxIndex >= 0) halfRow(box, '床の半径', l.boxes[c.boxIndex].h);
+      numRow(box, '落ちるまで', () => c.delay, v => { c.delay = Math.max(0.05, v); }, 0.05);
+      numRow(box, '戻るまで', () => c.respawn, v => { c.respawn = Math.max(0.25, v); }, 0.25);
+      box.insertAdjacentHTML('beforeend',
+        '<p class="hint">乗ると揺れて、「落ちるまで」秒で抜けます。' +
+        '「戻るまで」秒たつと元の位置に復活します。</p>');
+      break;
+    }
     case 'targets':
       halfRow(box, '半径', l.targets[i].half);
       checkRow(box, '浮遊', () => l.targets[i].floating,
@@ -1354,7 +1446,8 @@ function updateHud() {
   $('hud').textContent =
     'box ' + l.boxes.length + '   移動床 ' + l.platforms.length + '   コイン ' + l.coins.length +
     '   ボット ' + l.bots.length + '   ターゲット ' + l.targets.length + '\n' +
-    'バネ ' + l.springs.length + '   ボタン ' + l.buttons.length + '   スライダー ' + l.slides.length +
+    'バネ ' + l.springs.length + '   ボタン ' + l.buttons.length + '   崩れる床 ' + l.crumbles.length +
+    '   スライダー ' + l.slides.length +
     '   アンカー ' + l.anchors.length + '   敵 ' + l.enemies.length + '\n' +
     '能力 ' + l.pickups.length + '   チェックポイント ' + l.checkpoints.length +
     '   グリッド ' + (grid > 0 ? grid : 'なし');
@@ -1408,15 +1501,112 @@ $('file').onchange = () => {
   rd.readAsText(f2);
   $('file').value = '';
 };
-$('btnSave').onclick = () => {
-  const blob = new Blob([serializeLevel(L.level)], { type: 'text/plain;charset=utf-8' });
+// ══════════════════════════════════════════════ 保存先フォルダ
+//
+// File System Access API が使えるブラウザ（Chrome / Edge）なら、選んだフォルダの
+// level.txt を直接上書きできる。ダウンロードして手で move する往復が消える。
+// 使えないブラウザでは今まで通りダウンロードに落とす。
+//
+// 選んだフォルダは IndexedDB に覚えておく（ハンドルはそのまま保存できる）。
+// ただし権限はページを開き直すと保留になるので、保存の直前に貰い直す。
+
+let dirHandle = null;
+
+function idb(mode, fn) {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('astro_proto_editor', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onerror = () => rej(req.error);
+    req.onsuccess = () => {
+      const tx = req.result.transaction('kv', mode);
+      const r = fn(tx.objectStore('kv'));
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    };
+  });
+}
+const idbGet = (k) => idb('readonly', (st) => st.get(k));
+const idbSet = (k, v) => idb('readwrite', (st) => st.put(v, k));
+
+function updateDirLabel() {
+  const el = $('dirLabel');
+  if (!window.showDirectoryPicker) { el.textContent = '保存先: ダウンロード（この browser は直接保存に非対応）'; return; }
+  el.textContent = dirHandle ? ('保存先: ' + dirHandle.name + '/level.txt') : '保存先: 未設定（ダウンロード）';
+}
+
+function downloadLevel(text) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = 'level.txt';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-  toast('level.txt を保存しました');
+  toast('level.txt をダウンロードしました');
+}
+
+async function saveLevelFile() {
+  const text = serializeLevel(L.level);
+  if (dirHandle) {
+    try {
+      let perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') perm = await dirHandle.requestPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') throw new Error('permission denied');
+      const fh = await dirHandle.getFileHandle('level.txt', { create: true });
+      const w = await fh.createWritable();
+      await w.write(text);
+      await w.close();
+      toast(dirHandle.name + '/level.txt に上書きしました');
+      return;
+    } catch (err) {
+      console.warn('[editor] フォルダへ保存できませんでした', err);
+      toast('フォルダへ保存できないのでダウンロードします');
+    }
+  }
+  downloadLevel(text);
+}
+
+$('btnSave').onclick = saveLevelFile;
+
+$('btnDir').onclick = async () => {
+  if (!window.showDirectoryPicker) {
+    toast('このブラウザは直接保存に非対応です（Chrome / Edge をお使いください）');
+    return;
+  }
+  try {
+    dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    await idbSet('dir', dirHandle);
+    updateDirLabel();
+    toast('保存先を ' + dirHandle.name + ' にしました');
+  } catch (err) { /* キャンセルは無視 */ }
 };
+
+// ══════════════════════════════════════════════ 埋め込み試遊
+//
+// 同じページの上にゲーム（index.html）を重ねて出す。編集内容はブラウザ保存を
+// 経由して渡すので、ファイルのやり取りは要らない。閉じるときに iframe を空にして
+// wasm を捨てる（開きっぱなしだとメモリを持っていかれるため）。
+function openPlaytest() {
+  saveLocal();
+  const f = $('playframe');
+  f.src = './index.html?level=editor&v=4&t=' + Date.now();
+  $('playwrap').classList.add('on');
+  setTimeout(() => f.focus(), 300);
+}
+function closePlaytest() {
+  $('playwrap').classList.remove('on');
+  $('playframe').src = 'about:blank';
+}
+$('btnPlay').onclick = openPlaytest;
+$('btnReplay').onclick = openPlaytest;
+$('btnClosePlay').onclick = closePlaytest;
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('playwrap').classList.contains('on')) closePlaytest();
+});
+// 試遊中は入力が iframe 側にあるので、ゲームから Esc を転送してもらう
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin) return;
+  if (e.data && e.data.astro === 'close-playtest') closePlaytest();
+});
 $('btnDefault').onclick = () => {
   if (!confirm('今の編集内容を捨てて、既定のレベルに戻します。よろしいですか？')) return;
   loadText(DEFAULT_LEVEL, '既定レベル');
@@ -1448,6 +1638,14 @@ function saveLocal() {
 //
 // デモ（index.html）はこのページの隣にある前提。リポジトリの tools/ から直接開いた
 // ときなど、隣に居ない場合はリンクを無効にして、代わりの手順を出す。
+(async function restoreDir() {
+  try {
+    const h = await idbGet('dir');
+    if (h) dirHandle = h;
+  } catch (err) { /* 使えない環境は無視 */ }
+  updateDirLabel();
+})();
+
 (function setupPlayLink() {
   var link = document.getElementById('playLink');
   fetch('./index.html', { method: 'HEAD' })
@@ -1456,7 +1654,10 @@ function saveLocal() {
       link.removeAttribute('href');
       link.style.opacity = '.45';
       link.style.cursor = 'default';
-      link.title = 'このページの隣にデモ(index.html)が無いので開けません。'
+      link.title = 'このページの隣にデモ(index.html)が無いので開けません。';
+      const play = document.getElementById('btnPlay');
+      play.disabled = true;
+      play.title = 'このページの隣にデモ(index.html)が無いので試遊できません。'
                  + '「level.txt を保存」で書き出して、ゲーム側で読み込んでください。';
     });
 })();
